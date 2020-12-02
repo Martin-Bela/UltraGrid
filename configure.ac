@@ -1477,12 +1477,6 @@ fi
 # -------------------------------------------------------------------------------------------------
 # SRT
 # -------------------------------------------------------------------------------------------------
-RTSP_SERVER_INC=
-RTSP_SERVER_OBJ=
-rtsp_server=no
-livemedia=no
-livemedia_prefix=/usr
-
 AC_ARG_ENABLE(srt,
 [  --enable-srt            enables SRT server support (default is auto)]
 [                          Requires: srt],
@@ -1490,16 +1484,24 @@ AC_ARG_ENABLE(srt,
     [srt_req=$build_default]
     )
 
-SAVED_CFLAGS=$CFLAGS
-SAVED_LIBS=$LIBS
-AC_CHECK_HEADERS([srt/srt.h])
-AC_CHECK_LIB(srt, srt_send)
-CFLAGS=$SAVED_CFLAGS
-LIBS=$SAVED_LIBS
+srt=no
+PKG_CHECK_MODULES([SRT], [srt], FOUND_SRT=yes, FOUND_SRT=no)
+if test "$FOUND_SRT" = no; then
+        SAVED_CFLAGS=$CFLAGS
+        SAVED_LIBS=$LIBS
+        AC_CHECK_HEADERS([srt/srt.h])
+        AC_CHECK_LIB(srt, srt_send)
+        CFLAGS=$SAVED_CFLAGS
+        LIBS=$SAVED_LIBS
+        if test $ac_cv_header_srt_srt_h = yes -a $ac_cv_lib_srt_srt_send = yes; then
+                FOUND_SRT=yes
+                SRT_LIBS=-lsrt
+        fi
+fi
 
-if test $srt_req != no -a $ac_cv_header_srt_srt_h = yes -a $ac_cv_lib_srt_srt_send = yes
+if test $srt_req != no -a $FOUND_SRT
 then
-        ADD_MODULE("video_rxtx_srt", "src/video_rxtx/srt.o", "-lsrt")
+        ADD_MODULE("video_rxtx_srt", "src/video_rxtx/srt.o", "$SRT_LIBS")
         srt=yes
 fi
 

@@ -38,58 +38,7 @@
 #ifndef VIDEO_RXTX_SRT_H_37B7F258_3A70_4EB1_A5F8_BA88B3D5416D
 #define VIDEO_RXTX_SRT_H_37B7F258_3A70_4EB1_A5F8_BA88B3D5416D
 
-#include <condition_variable>
-#include <memory> // std::unique_ptr
-#include <mutex>
-#include <srt/srt.h>
-#include <string>
-#include <thread>
-
-#include "types.h"
-#include "video_rxtx.h"
-
 constexpr const char *SRT_LOOPBACK = "127.1.2.3";
-
-struct video_frame;
-struct display;
-struct srt_decoder;
-
-class srt_video_rxtx: public video_rxtx {
-public:
-        srt_video_rxtx(std::map<std::string, param_u> const &);
-        ~srt_video_rxtx();
-private:
-        void send_frame(std::shared_ptr<video_frame>) override;
-        void *(*get_receiver_thread())(void *arg) override {
-                return receiver_thread;
-        }
-        void listen();
-        void connect(std::string receiver, uint16_t tx_port);
-
-        static void *receiver_thread(void *arg) {
-                auto *s = static_cast<srt_video_rxtx *>(arg);
-                s->receiver_loop();
-                return nullptr;
-        }
-        static void cancel_receiver(void *arg);
-        void receiver_loop();
-
-        struct display *m_display_device;
-
-        SRTSOCKET     m_socket_listen{};
-        SRTSOCKET     m_socket_rx{};
-        SRTSOCKET     m_socket_tx{};
-
-        std::thread m_listener_thread;
-        std::thread m_caller_thread;
-
-        std::mutex m_lock;
-        std::condition_variable m_connected_cv;
-
-        bool m_should_exit{false};
-
-        std::unique_ptr<srt_decoder> m_decoder;
-};
 
 #endif // defined VIDEO_RXTX_SRT_H_37B7F258_3A70_4EB1_A5F8_BA88B3D5416D
 
