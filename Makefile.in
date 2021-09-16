@@ -265,7 +265,7 @@ DEP_FILES = $(patsubst %.lib,%.P,$(DEP_FILES_1:.o=.P)) # replace .o and also .li
 # -------------------------------------------------------------------------------------------------
 .PHONY: doc
 
-all: $(TARGET) $(GUI_TARGET) $(REFLECTOR_TARGET) @MODULES@ configure-messages
+all: $(TARGET) $(GUI_TARGET) $(REFLECTOR_TARGET) @MODULES@ configure-messages vulkan_shaders
 
 src/dir-stamp:
 	$(MKDIR_P) $(dir $@)
@@ -522,6 +522,19 @@ gui/QT/Makefile: gui/QT/uv-qt.pro
 $(GUI_TARGET): gui/QT/Makefile
 	$(COND_SILENCE)cd gui/QT && $(MAKE) --no-print-directory
 
+
+VULKAN_ENABLED=$(findstring vulkan, $(OBJS))
+
+VULKAN_SHADER_PATH=$(srcdir)/src/video_display/vulkan_shaders
+VULKAN_SHADER_FILES=$(VULKAN_SHADER_PATH)/vert.spv $(VULKAN_SHADER_PATH)/frag.spv
+
+vulkan_shaders: $(VULKAN_SHADER_FILES)
+ifneq ( ,$(VULKAN_ENABLED))
+	$(MKDIR_P) bin/shaders/
+	cp --target-directory=bin/shaders/  $(VULKAN_SHADER_FILES)
+endif
+
+
 # -------------------------------------------------------------------------------------------------
 $(TEST_TARGET): $(TEST_OBJS) @TEST_OBJS@
 	$(MKDIR_P) $(dir $@)
@@ -585,6 +598,7 @@ clean:
 	$(COND_SILENCE)-rm -rf $(REFLECTOR_TARGET) $(REFLECTOR_OBJS)
 	$(COND_SILENCE)-rm -rf @LIB_OBJS@ @MODULES@ @LIB_GENERATED_HEADERS@
 	$(COND_SILENCE)-rm -rf $(DEP_FILES)
+	$(COND_SILENCE)-rm -rf bin/shaders
 	$(COND_SILENCE)if [ -f "gui/QT/Makefile" ]; then make -C gui/QT/ distclean; fi
 
 distclean: clean
@@ -701,7 +715,6 @@ install: all
 	$(INSTALL) -d -m 755 $(DESTDIR)$(man1dir)
 	$(INSTALL) -m 644 $(srcdir)/data/uv.1 $(srcdir)/data/hd-rum-transcode.1 $(DESTDIR)$(man1dir)
 	if [ -n '@DLL_LIBS@' ]; then  $(INSTALL) -m 644 @DLL_LIBS@ $(DESTDIR)$(bindir); fi
-
 uninstall:
 	$(RM) $(DESTDIR)$(bindir)/uv
 	$(RM) $(DESTDIR)$(bindir)/hd-rum-transcode
