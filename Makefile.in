@@ -265,7 +265,7 @@ DEP_FILES = $(patsubst %.lib,%.P,$(DEP_FILES_1:.o=.P)) # replace .o and also .li
 # -------------------------------------------------------------------------------------------------
 .PHONY: doc
 
-all: $(TARGET) $(GUI_TARGET) $(REFLECTOR_TARGET) @MODULES@ configure-messages vulkan_shaders
+all: $(TARGET) $(GUI_TARGET) $(REFLECTOR_TARGET) @MODULES@ configure-messages
 
 src/dir-stamp:
 	$(MKDIR_P) $(dir $@)
@@ -521,25 +521,6 @@ gui/QT/Makefile: gui/QT/uv-qt.pro
 .PHONY: $(GUI_TARGET)
 $(GUI_TARGET): gui/QT/Makefile
 	$(COND_SILENCE)cd gui/QT && $(MAKE) --no-print-directory
-
-
-VULKAN_ENABLED=$(findstring vulkan, $(OBJS))
-VULKAN_SHADER_FILES=bin/shaders/vert.spv bin/shaders/frag.spv
-
-ifneq ( ,$(VULKAN_ENABLED))
-# if vulkan is enabled:
-vulkan_shaders: $(VULKAN_SHADER_FILES)
-else
-# else do nothing:
-vulkan_shaders:
-	@:
-endif
-
-
-bin/shaders/%.spv: $(srcdir)/src/video_display/vulkan_shaders/%.spv
-	$(MKDIR_P) $(dir $@)
-	cp $< $@
-
 
 # -------------------------------------------------------------------------------------------------
 $(TEST_TARGET): $(TEST_OBJS) @TEST_OBJS@
