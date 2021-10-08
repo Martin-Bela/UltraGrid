@@ -1255,7 +1255,9 @@ if test $vulkan_req != no; then
                 AC_MSG_ERROR([SDL2 not found]);
         fi
 fi
-echo $vulkan_req $sdl $sdl_version $found_vulkan
+
+#echo $vulkan_req $sdl $sdl_version $found_vulkan
+
 if test $vulkan_req != no -a $sdl = yes -a $sdl_version = 2 -a $found_vulkan = yes
 then        
 	VULKAN_OBJ="src/video_display/vulkan_sdl2.o src/video_display/vulkan_display.o src/video_display/vulkan_context.o src/video_display/vulkan_transfer_image.o"
