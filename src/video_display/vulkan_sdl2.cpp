@@ -105,6 +105,8 @@
 #include <unordered_map>
 #include <utility> // pair
 
+#include"testing.h"
+
 using rang::fg;
 using rang::style;
 
@@ -141,6 +143,7 @@ public:
                 return { static_cast<uint32_t>(width), static_cast<uint32_t>(height) };
         }
 };
+
 
 constexpr size_t add_padding(size_t size, size_t allignment){
         return ((size + allignment - 1) / allignment) * allignment;
@@ -392,6 +395,9 @@ void display_sdl2_run(void* state) {
         
         s->time = chrono::steady_clock::now();
         while (!s->should_exit) {
+                static AverageTimer loop_timer("display_sdl2_run loop timer");
+                loop_timer.start();
+
                 process_events(*s);
                 bool displayed = false;
                 try {
@@ -410,9 +416,9 @@ void display_sdl2_run(void* state) {
                         s->time = now;
                         s->frames = 0;
                 }
+                loop_timer.stop();
         }
         SDL_HideWindow(s->window);
-
 }
 
 void sdl2_print_displays() {
@@ -658,6 +664,8 @@ bool parse_command_line_arguments(command_line_arguments& args, state_vulkan_sdl
 }
 
 void* display_sdl2_init(module* parent, const char* fmt, unsigned int flags) {
+        static AddTimer timer(__func__);
+        timer.start();
         if (flags & DISPLAY_FLAG_AUDIO_ANY) {
                 log_msg(LOG_LEVEL_ERROR, "UltraGrid VULKAN_SDL2 module currently doesn't support audio!\n");
                 return nullptr;
@@ -767,6 +775,7 @@ void* display_sdl2_init(module* parent, const char* fmt, unsigned int flags) {
         s->ug_frames.init();
 
         draw_splashscreen(*s);
+        timer.stop();
         return static_cast<void*>(s.release());
 }
 
@@ -811,6 +820,8 @@ vkd::image_description to_vkd_image_desc(const video_desc& ultragrid_desc) {
 }
 
 video_frame* display_sdl2_getf(void* state) {
+        static AverageTimer timer(__func__);
+        timer.start();
         auto* s = static_cast<state_vulkan_sdl2*>(state);
         assert(s->mod.priv_magic == magic_vulkan_sdl2);
         
@@ -831,10 +842,13 @@ video_frame* display_sdl2_getf(void* state) {
         }
         frame.tiles[0].data_len = image.get_row_pitch() * texel_height;
         frame.tiles[0].data = reinterpret_cast<char*>(image.get_memory_ptr());
+        timer.stop();
         return &frame;
 }
 
 int display_sdl2_putf(void* state, video_frame* frame, int nonblock) {
+        static AverageTimer timer(__func__);
+        timer.start();
         auto* s = static_cast<state_vulkan_sdl2*>(state);
         assert(s->mod.priv_magic == magic_vulkan_sdl2);
 
@@ -842,6 +856,7 @@ int display_sdl2_putf(void* state, video_frame* frame, int nonblock) {
                 s->should_exit = true;
                 bool discarded;
                 s->vulkan->queue_image(vkd::image{}, true, discarded);
+                timer.stop();
                 return 0;
         }
 
@@ -854,6 +869,7 @@ int display_sdl2_putf(void* state, video_frame* frame, int nonblock) {
                         s->vulkan->discard_image(s->images[id]);
                 } 
                 catch (std::exception& e) { log_and_exit_uv(e); return 1; }
+                timer.stop();
                 return 0;
         }
         
@@ -871,6 +887,7 @@ int display_sdl2_putf(void* state, video_frame* frame, int nonblock) {
                 return discarded;
         } 
         catch (std::exception& e) { log_and_exit_uv(e); return 1; }
+        timer.stop();
         return 0;
 }
 

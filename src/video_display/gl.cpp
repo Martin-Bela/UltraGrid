@@ -92,6 +92,8 @@
 #include "video_display/splashscreen.h"
 #include "tv.h"
 
+#include "testing.h"
+
 #define MAGIC_GL         0x1331018e
 #define MOD_NAME         "[GL] "
 #define DEFAULT_WIN_NAME "Ultragrid - OpenGL Display"
@@ -259,6 +261,8 @@ struct state_vdpau {
 
 };
 #endif
+
+static AddTimer gl_init_timer{"Gl Initialisation"};
 
 struct state_gl {
         GLuint          PHandle_uyvy, PHandle_dxt, PHandle_dxt5;
@@ -439,6 +443,7 @@ static void gl_load_splashscreen(struct state_gl *s)
 }
 
 static void * display_gl_init(struct module *parent, const char *fmt, unsigned int flags) {
+        gl_init_timer.start();
         int use_pbo = -1; // default
         UNUSED(flags);
         if (gl) {
@@ -555,7 +560,7 @@ static void * display_gl_init(struct module *parent, const char *fmt, unsigned i
 
         /* GLUT callbacks take only some arguments so we need static variable */
         gl = s;
-
+        gl_init_timer.stop();
         return (void*)s;
 }
 
@@ -892,6 +897,8 @@ static void pop_frame(struct state_gl *s)
 
 static void glut_idle_callback(void)
 {
+        static AverageTimer loop_timer("loop_timer");
+        loop_timer.start();
         struct state_gl *s = gl;
         struct timeval tv;
         double seconds;
@@ -971,7 +978,8 @@ static void glut_idle_callback(void)
         if (!video_desc_eq(video_desc_from_frame(frame), s->current_display_desc)) {
                 gl_reconfigure_screen(s, video_desc_from_frame(frame));
         }
-
+        static AverageTimer render_timer("render_timer");
+        render_timer.start();
         gl_render(s, frame->tiles[0].data);
         gl_draw(s->aspect, (gl->dxt_height - gl->current_display_desc.height) / (float) gl->dxt_height * 2, gl->vsync != SINGLE_BUF);
 
@@ -986,6 +994,7 @@ static void glut_idle_callback(void)
         }
 
         glutSwapBuffers();
+        render_timer.stop();
         log_msg(LOG_LEVEL_DEBUG, "Render buffer %dx%d\n", frame->tiles[0].width, frame->tiles[0].height);
         pop_frame(s);
 
@@ -1000,6 +1009,7 @@ static void glut_idle_callback(void)
                 s->frames = 0;
                 s->tv = tv;
         }
+        loop_timer.stop();
 }
 
 static int64_t translate_glut_to_ug(int key, bool is_special) {
@@ -1274,6 +1284,7 @@ static bool display_gl_init_opengl(struct state_gl *s)
 
 static void display_gl_run(void *arg)
 {
+        gl_init_timer.start();
         struct state_gl *s = 
                 (struct state_gl *) arg;
 
@@ -1281,7 +1292,7 @@ static void display_gl_run(void *arg)
                 exit_uv(1);
                 return;
         }
-
+        gl_init_timer.stop();
 #if defined FREEGLUT
 	glutMainLoop();
 #else
@@ -1870,6 +1881,8 @@ static void display_gl_done(void *state)
 
 static struct video_frame * display_gl_getf(void *state)
 {
+        static AverageTimer timer(__func__);
+        timer.start();
         struct state_gl *s = (struct state_gl *) state;
         assert(s->magic == MAGIC_GL);
 
@@ -1879,6 +1892,7 @@ static struct video_frame * display_gl_getf(void *state)
                 struct video_frame *buffer = s->free_frame_queue.front();
                 s->free_frame_queue.pop();
                 if (video_desc_eq(video_desc_from_frame(buffer), s->current_desc)) {
+                        timer.stop();
                         return buffer;
                 } else {
                         vf_free(buffer);
@@ -1891,11 +1905,14 @@ static struct video_frame * display_gl_getf(void *state)
                         vc_get_linesize(buffer->tiles[0].width, buffer->color_spec),
                         buffer->tiles[0].height,
                         buffer->color_spec);
+        timer.stop();
         return buffer;
 }
 
 static int display_gl_putf(void *state, struct video_frame *frame, int nonblock)
 {
+        static AverageTimer timer(__func__);
+        timer.start();
         struct state_gl *s = (struct state_gl *) state;
 
         assert(s->magic == MAGIC_GL);
@@ -1907,17 +1924,20 @@ static int display_gl_putf(void *state, struct video_frame *frame, int nonblock)
                 s->frame_queue.push(frame);
                 lk.unlock();
                 s->new_frame_ready_cv.notify_one();
+                timer.stop();
                 return 0;
         }
 
         if (nonblock == PUTF_DISCARD) {
                 vf_recycle(frame);
                 s->free_frame_queue.push(frame);
+                timer.stop();
                 return 0;
         }
         if (s->frame_queue.size() >= MAX_BUFFER_SIZE && nonblock == PUTF_NONBLOCK) {
                 vf_recycle(frame);
                 s->free_frame_queue.push(frame);
+                timer.stop();
                 return 1;
         }
         s->frame_consumed_cv.wait(lk, [s]{return s->frame_queue.size() < MAX_BUFFER_SIZE;});
@@ -1926,6 +1946,7 @@ static int display_gl_putf(void *state, struct video_frame *frame, int nonblock)
         lk.unlock();
         s->new_frame_ready_cv.notify_one();
 
+        timer.stop();
         return 0;
 }
 

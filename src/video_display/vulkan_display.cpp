@@ -12,6 +12,8 @@
 #include <utility>
 #include <vector>
 
+#include "testing.h"
+
 
 
 using namespace vulkan_display_detail;
@@ -539,7 +541,10 @@ VKD_RETURN_TYPE vulkan_display::display_queued_image(bool* displayed) {
                 return VKD_RETURN_TYPE();
         }
 
-        transfer_image& transfer_image = *transfer_image_ptr;
+        static AverageTimer display_timer("display_sdl2_run display timer");
+        display_timer.start();
+		
+		transfer_image& transfer_image = *transfer_image_ptr;
         transfer_image.preprocess();
 
         auto& semaphores = image_semaphores[transfer_image.get_id()];
@@ -629,6 +634,7 @@ VKD_RETURN_TYPE vulkan_display::display_queued_image(bool* displayed) {
         if (displayed) {
                 *displayed = true;
         }
+        display_timer.stop();
         available_img_queue.wait_enqueue(&transfer_image);
         return VKD_RETURN_TYPE();
 }

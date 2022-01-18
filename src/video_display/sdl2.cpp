@@ -83,6 +83,8 @@
 #include <unordered_map>
 #include <utility> // pair
 
+#include "testing.h"
+
 #define MAGIC_SDL2   0x3cc234a1
 #define MAX_BUFFER_SIZE   1
 #define MOD_NAME "[SDL] "
@@ -97,6 +99,8 @@ static void display_sdl2_new_message(struct module *);
 static int display_sdl2_putf(void *state, struct video_frame *frame, int nonblock);
 static int display_sdl2_reconfigure(void *state, struct video_desc desc);
 static int display_sdl2_reconfigure_real(void *state, struct video_desc desc);
+
+static AddTimer sdl_init_timer{"SDL Initialisation"};;
 
 struct state_sdl2 {
         struct module           mod;
@@ -165,7 +169,8 @@ static void display_frame(struct state_sdl2 *s, struct video_frame *frame)
                         goto free_frame;
                 }
         }
-
+        static AverageTimer display_timer("display timer");
+        display_timer.start();
         if (!s->deinterlace) {
                 int pitch;
                 if (codec_is_planar(frame->color_spec)) {
@@ -181,9 +186,9 @@ static void display_frame(struct state_sdl2 *s, struct video_frame *frame)
                 vc_deinterlace_ex((unsigned char *) frame->tiles[0].data, vc_get_linesize(frame->tiles[0].width, frame->color_spec), pixels, pitch, frame->tiles[0].height);
                 SDL_UnlockTexture(s->texture);
         }
-
         SDL_RenderCopy(s->renderer, s->texture, NULL, NULL);
         SDL_RenderPresent(s->renderer);
+        display_timer.stop();
 
 free_frame:
         if (frame == s->last_frame) {
@@ -276,6 +281,8 @@ static void display_sdl2_run(void *arg)
         bool should_exit_sdl = false;
 
         while (!should_exit_sdl) {
+                static AverageTimer loop_timer("loop timer");
+                loop_timer.start();
                 SDL_Event sdl_event;
                 if (!SDL_WaitEvent(&sdl_event)) {
                         continue;
@@ -290,6 +297,7 @@ static void display_sdl2_run(void *arg)
                         } else { // poison pill received
                                 should_exit_sdl = true;
                         }
+                        
                 } else if (sdl_event.type == s->sdl_user_new_message_event) {
                         struct msg_universal *msg;
                         while ((msg = (struct msg_universal *) check_message(&s->mod))) {
@@ -341,6 +349,7 @@ static void display_sdl2_run(void *arg)
                 } else if (sdl_event.type == SDL_QUIT) {
                         exit_uv(0);
                 }
+                loop_timer.stop();
         }
 }
 
@@ -461,6 +470,7 @@ static bool create_texture(struct state_sdl2 *s, struct video_desc desc) {
 
 static int display_sdl2_reconfigure_real(void *state, struct video_desc desc)
 {
+        sdl_init_timer.start();
         struct state_sdl2 *s = (struct state_sdl2 *)state;
 
         log_msg(LOG_LEVEL_NOTICE, "[SDL] Reconfigure to size %dx%d\n", desc.width,
@@ -513,7 +523,7 @@ static int display_sdl2_reconfigure_real(void *state, struct video_desc desc)
         if (!create_texture(s, desc)) {
                 return FALSE;
         }
-
+        sdl_init_timer.stop();
         return TRUE;
 }
 
@@ -557,6 +567,7 @@ static void loadSplashscreen(struct state_sdl2 *s) {
 
 static void *display_sdl2_init(struct module *parent, const char *fmt, unsigned int flags)
 {
+        sdl_init_timer.start();
         if (flags & DISPLAY_FLAG_AUDIO_ANY) {
                 log_msg(LOG_LEVEL_ERROR, "UltraGrid SDL2 module currently doesn't support audio!\n");
                 return NULL;
@@ -649,7 +660,7 @@ static void *display_sdl2_init(struct module *parent, const char *fmt, unsigned 
         }
 
         log_msg(LOG_LEVEL_NOTICE, "SDL2 initialized successfully.\n");
-
+        sdl_init_timer.stop();
         return (void *) s;
 }
 
@@ -690,6 +701,8 @@ static void display_sdl2_done(void *state)
 
 static struct video_frame *display_sdl2_getf(void *state)
 {
+        static AverageTimer timer(__func__);
+        timer.start();
         struct state_sdl2 *s = (struct state_sdl2 *)state;
         assert(s->mod.priv_magic == MAGIC_SDL2);
 
@@ -699,17 +712,22 @@ static struct video_frame *display_sdl2_getf(void *state)
                 struct video_frame *buffer = s->free_frame_queue.front();
                 s->free_frame_queue.pop();
                 if (video_desc_eq(video_desc_from_frame(buffer), s->current_desc)) {
+                        timer.stop();
                         return buffer;
                 } else {
                         vf_free(buffer);
                 }
         }
-
-        return vf_alloc_desc_data(s->current_desc);
+        
+        auto r = vf_alloc_desc_data(s->current_desc);
+        timer.stop();
+        return r;
 }
 
 static int display_sdl2_putf(void *state, struct video_frame *frame, int nonblock)
 {
+        static AverageTimer timer(__func__);
+        timer.start();
         struct state_sdl2 *s = (struct state_sdl2 *)state;
 
         assert(s->mod.priv_magic == MAGIC_SDL2);
@@ -718,6 +736,7 @@ static int display_sdl2_putf(void *state, struct video_frame *frame, int nonbloc
         if (nonblock == PUTF_DISCARD) {
                 assert(frame != nullptr);
                 s->free_frame_queue.push(frame);
+                timer.stop();
                 return 0;
         }
 
@@ -725,6 +744,7 @@ static int display_sdl2_putf(void *state, struct video_frame *frame, int nonbloc
                         && frame != NULL) {
                 s->free_frame_queue.push(frame);
                 LOG(LOG_LEVEL_INFO) << MOD_NAME << "1 frame(s) dropped!\n";
+                timer.stop();
                 return 1;
         }
         s->frame_consumed_cv.wait(lk, [s]{return s->buffered_frames_count < MAX_BUFFER_SIZE;});
@@ -734,7 +754,7 @@ static int display_sdl2_putf(void *state, struct video_frame *frame, int nonbloc
         event.type = s->sdl_user_new_frame_event;
         event.user.data1 = frame;
         SDL_PushEvent(&event);
-
+        timer.stop();
         return 0;
 }
 
