@@ -1,14 +1,18 @@
 #pragma once
 
-#include "concurent_queue.h"
+#include "concurrent_queue/readerwritercircularbuffer.h"
 #include "vulkan_context.h"
 #include "vulkan_transfer_image.h"
+
 
 #include <mutex>
 #include <filesystem>
 #include <utility>
 
 namespace vulkan_display_detail {
+
+template<typename T>
+using concurrent_queue = moodycamel::BlockingReaderWriterCircularBuffer<T>;
 
 struct render_area {
         uint32_t x;
@@ -80,8 +84,8 @@ class vulkan_display {
         std::vector<transfer_image> transfer_images{};
         image_description current_image_description;
 
-        concurrent_queue<transfer_image*> available_img_queue{};
-        concurrent_queue<image> filled_img_queue{};
+        vulkan_display_detail::concurrent_queue<transfer_image*> available_img_queue{8};
+        vulkan_display_detail::concurrent_queue<image> filled_img_queue{8};
 
         unsigned filled_img_max_count = 0;
         bool minimalised = false;
@@ -141,7 +145,7 @@ public:
         VKD_RETURN_TYPE discard_image(image image) {
                 auto* ptr = image.get_transfer_image();
                 assert(ptr);
-                available_img_queue.push(ptr);
+                available_img_queue.wait_enqueue(ptr);
                 return VKD_RETURN_TYPE();
         }
 
