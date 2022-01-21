@@ -73,27 +73,6 @@ VKD_RETURN_TYPE update_render_area_viewport_scissor(render_area& render_area, vk
         concurrent_queue<transfer_image*>& available_img_queue,
         [[maybe_unused]] concurrent_queue<vulkan_display::image>& filled_img_queue, [[maybe_unused]] unsigned filled_img_max_count)
 {
-        // first try available_img_queue
-        //transfer_image* transfer_image = nullptr;
-        /*bool dequed = available_img_queue.try_dequeue(transfer_image);
-        if (dequed) {
-                assert(transfer_image);
-                return *transfer_image;
-        }*/
-        // if available_img_queue is empty and filled_img_queue is almost full,
-        // take frame from filled_img_queue
-        /*{
-                auto [lock, deque] = filled_img_queue.get_underlying_deque();
-                while (deque.size() > filled_img_max_count) {
-                        vulkan_display::image front = deque.front();
-                        deque.pop_front();
-                        auto* front_image_ptr = front.get_transfer_image();
-                        if (front_image_ptr) {
-                                return *front_image_ptr;
-                        }
-                }
-        }*/
-        //else wait for frame from available_img_queue
         transfer_image* transfer_image = nullptr;
         available_img_queue.wait_dequeue(transfer_image);
         return *transfer_image;
@@ -299,7 +278,7 @@ VKD_RETURN_TYPE vulkan_display::create_graphics_pipeline() {
 
         auto result = device.createGraphicsPipelines(nullptr, 1, &pipeline_info, nullptr, &pipeline);
         VKD_CHECK(result, "Pipeline cannot be created.");       
-	return VKD_RETURN_TYPE();
+        return VKD_RETURN_TYPE();
 }
 
 VKD_RETURN_TYPE vulkan_display::create_image_semaphores()
@@ -538,7 +517,7 @@ VKD_RETURN_TYPE vulkan_display::display_queued_image(bool* displayed) {
                 return VKD_RETURN_TYPE();
         }
 
-        bool dequeued = filled_img_queue.try_dequeue(image);
+        bool dequeued = filled_img_queue.wait_dequeue_timed(image, 20ms);
         if (!dequeued) {
                 return VKD_RETURN_TYPE();
         }
