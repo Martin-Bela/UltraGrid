@@ -11,6 +11,9 @@
 
 namespace vulkan_display_detail {
 
+constexpr static unsigned filled_img_max_count = 1;
+constexpr auto waiting_time_for_filled_image = 50ms;
+
 template<typename T>
 using concurrent_queue = moodycamel::BlockingReaderWriterCircularBuffer<T>;
 
@@ -24,6 +27,8 @@ struct render_area {
 } // vulkan_display_detail
 
 namespace vulkan_display {
+
+namespace detail = vulkan_display_detail;
 
 constexpr inline bool is_yCbCr_format(vk::Format format) {
         auto f = static_cast<VkFormat>(format);
@@ -44,11 +49,11 @@ public:
 
 class vulkan_display {
         window_changed_callback* window = nullptr;
-        vulkan_display_detail::vulkan_context context;
+        detail::vulkan_context context;
         vk::Device device;
         std::mutex device_mutex{};
 
-        vulkan_display_detail::render_area render_area{};
+        detail::render_area render_area{};
         vk::Viewport viewport;
         vk::Rect2D scissor;
 
@@ -79,15 +84,15 @@ class vulkan_display {
         std::vector<image_semaphores> image_semaphores;
 
 
-        using transfer_image = vulkan_display_detail::transfer_image;
+        using transfer_image = detail::transfer_image;
         unsigned transfer_image_count = 0;
         std::vector<transfer_image> transfer_images{};
         image_description current_image_description;
 
-        vulkan_display_detail::concurrent_queue<transfer_image*> available_img_queue{8};
-        vulkan_display_detail::concurrent_queue<image> filled_img_queue{8};
+        detail::concurrent_queue<transfer_image*> available_img_queue{8};
+        detail::concurrent_queue<image> filled_img_queue{detail::filled_img_max_count};
 
-        unsigned filled_img_max_count = 0;
+
         bool minimalised = false;
         bool destroyed = false;
 private:
@@ -138,7 +143,7 @@ public:
 
         VKD_RETURN_TYPE acquire_image(image& image, image_description description);
 
-        VKD_RETURN_TYPE queue_image(image img);
+        VKD_RETURN_TYPE queue_image(image img, bool discardable = true);
 
         VKD_RETURN_TYPE copy_and_queue_image(std::byte* frame, image_description description);
 
