@@ -115,7 +115,7 @@ using namespace std::literals;
 namespace {
 
 constexpr int magic_vulkan_sdl2 = 0x3cc234a2;
-constexpr int max_frame_count = 3;
+constexpr int max_frame_count = 5;
 #define MOD_NAME "[VULKAN_SDL2] "
 
 
@@ -865,7 +865,7 @@ int display_sdl2_putf(void* state, video_frame* frame, long long timeout_ns) {
         }
         
         try {
-                s->vulkan->queue_image(s->images[id]);
+                s->vulkan->queue_image(s->images[id], timeout_ns != PUTF_BLOCKING);
         } 
         catch (std::exception& e) { log_and_exit_uv(e); return 1; }
         return 0;

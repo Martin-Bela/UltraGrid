@@ -70,8 +70,7 @@ VKD_RETURN_TYPE update_render_area_viewport_scissor(render_area& render_area, vk
 }
 
 [[nodiscard]] transfer_image& acquire_transfer_image(
-        concurrent_queue<transfer_image*>& available_img_queue,
-        [[maybe_unused]] concurrent_queue<vulkan_display::image>& filled_img_queue, [[maybe_unused]] unsigned filled_img_max_count)
+        concurrent_queue<transfer_image*>& available_img_queue)
 {
         transfer_image* transfer_image = nullptr;
         available_img_queue.wait_dequeue(transfer_image);
@@ -350,7 +349,6 @@ VKD_RETURN_TYPE vulkan_display::init(vulkan_instance&& instance, VkSurfaceKHR su
         assert(surface);
         this->window = &window;
         this->transfer_image_count = transfer_image_count;
-        this->filled_img_max_count = (transfer_image_count + 1) / 2;
         auto window_parameters = window.get_window_parameters();
         
         VKD_PASS_RESULT(context.init(std::move(instance), surface, window_parameters, gpu_index, get_present_mode(vsync, tearing_permitted)));
@@ -367,6 +365,9 @@ VKD_RETURN_TYPE vulkan_display::init(vulkan_instance&& instance, VkSurfaceKHR su
         for (uint32_t i = 0; i < transfer_image_count; i++) {
                 transfer_images.emplace_back(device, i);
                 available_img_queue.wait_enqueue(&transfer_images.back());
+        }
+        if (transfer_image_count > 8){
+                available_img_queue = concurrent_queue<transfer_image*>{transfer_image_count};
         }
         return VKD_RETURN_TYPE();
 }
@@ -467,8 +468,7 @@ VKD_RETURN_TYPE vulkan_display::acquire_image(image& result, image_description d
                         VKD_CHECK(false, error_msg);
                 }
         }
-        transfer_image& transfer_image = acquire_transfer_image(available_img_queue, 
-                filled_img_queue, filled_img_max_count);
+        transfer_image& transfer_image = acquire_transfer_image(available_img_queue);
         assert(transfer_image.get_id() != transfer_image::NO_ID);
         {
                 std::unique_lock device_lock(device_mutex, std::defer_lock);
@@ -498,7 +498,11 @@ VKD_RETURN_TYPE vulkan_display::copy_and_queue_image(std::byte* frame, image_des
         return VKD_RETURN_TYPE();
 }
 
-VKD_RETURN_TYPE vulkan_display::queue_image(image image) {
+VKD_RETURN_TYPE vulkan_display::queue_image(image image, bool discardable) {
+        // if image is discardable and the filled_img_queue is full
+        if (discardable && filled_img_queue.size_approx() >= filled_img_max_count){
+                available_img_queue.wait_enqueue(image.get_transfer_image());
+        }
         filled_img_queue.wait_enqueue(image);
         return VKD_RETURN_TYPE();
 }
@@ -517,7 +521,7 @@ VKD_RETURN_TYPE vulkan_display::display_queued_image(bool* displayed) {
                 return VKD_RETURN_TYPE();
         }
 
-        bool dequeued = filled_img_queue.wait_dequeue_timed(image, 20ms);
+        bool dequeued = filled_img_queue.wait_dequeue_timed(image, waiting_time_for_filled_image);
         if (!dequeued) {
                 return VKD_RETURN_TYPE();
         }

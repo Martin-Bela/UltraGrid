@@ -87,15 +87,17 @@ public:
 
 namespace vulkan_display {
 
+namespace detail = vulkan_display_detail;
+
 class image {
         
-        vulkan_display_detail::transfer_image* transfer_image = nullptr;
+        detail::transfer_image* transfer_image = nullptr;
 public:
         image() = default;
-        explicit image(vulkan_display_detail::transfer_image& image) :
+        explicit image(detail::transfer_image& image) :
                 transfer_image{ &image }
         { 
-                assert(image.id != vulkan_display_detail::transfer_image::NO_ID);
+                assert(image.id != detail::transfer_image::NO_ID);
                 transfer_image->preprocess_fun = nullptr;
         }
 
