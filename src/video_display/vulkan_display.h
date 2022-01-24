@@ -89,9 +89,12 @@ class vulkan_display {
         std::vector<transfer_image> transfer_images{};
         image_description current_image_description;
 
+        /// available_img_queue - producer is the render thread, consumer is the provided thread
         detail::concurrent_queue<transfer_image*> available_img_queue{8};
-        detail::concurrent_queue<image> filled_img_queue{detail::filled_img_max_count};
-
+        /// filled_img_queue - producer is the provider thread, consumer is the render thread
+        detail::concurrent_queue<transfer_image*> filled_img_queue{8};
+        /// local to provider thread
+        std::vector<transfer_image*> available_images;
 
         bool minimalised = false;
         bool destroyed = false;
@@ -120,6 +123,10 @@ private:
         VKD_RETURN_TYPE record_graphics_commands(transfer_image& transfer_image, uint32_t swapchain_image_id);
 
 public:
+        /// TERMINOLOGY:
+        /// render thread - thread which renders queued images on the screen 
+        /// provider thread - thread which calls getf and putf and fills image queue with newly filled images
+
         vulkan_display() = default;
 
         vulkan_display(const vulkan_display& other) = delete;
@@ -139,29 +146,37 @@ public:
 
         VKD_RETURN_TYPE destroy();
 
+        /** Thread-safe */
         VKD_RETURN_TYPE is_image_description_supported(bool& supported, image_description description);
 
+        /** Thread-safe to call from provider thread.*/
         VKD_RETURN_TYPE acquire_image(image& image, image_description description);
 
-        VKD_RETURN_TYPE queue_image(image img, bool discardable = true);
+        /** Thread-safe to call from provider thread.*/
+        VKD_RETURN_TYPE queue_image(image img, bool discardable, bool& discarded);
 
+        /** Thread-safe to call from provider thread.*/
         VKD_RETURN_TYPE copy_and_queue_image(std::byte* frame, image_description description);
 
+        /** Thread-safe to call from provider thread.*/
         VKD_RETURN_TYPE discard_image(image image) {
                 auto* ptr = image.get_transfer_image();
                 assert(ptr);
-                available_img_queue.wait_enqueue(ptr);
+                available_images.push_back(ptr);
                 return VKD_RETURN_TYPE();
         }
 
+        /** Thread-safe to call from render thread.*/
         VKD_RETURN_TYPE display_queued_image(bool* displayed = nullptr);
 
-        uint32_t get_vulkan_version() { return context.get_vulkan_version(); }
+        /** Thread-safe*/
+        uint32_t get_vulkan_version() const { return context.get_vulkan_version(); }
         
-        bool is_yCbCr_supported() { return context.is_yCbCr_supported(); }
+        /** Thread-safe*/
+        bool is_yCbCr_supported() const { return context.is_yCbCr_supported(); }
 
         /**
-         * @brief Hint to vulkan display that some window parameters spicified in struct Window_parameters changed
+         * @brief Hint to vulkan display that some window parameters spicified in struct Window_parameters changed.
          */
         VKD_RETURN_TYPE window_parameters_changed(window_parameters new_parameters);
 

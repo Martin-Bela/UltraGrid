@@ -148,7 +148,7 @@ constexpr size_t add_padding(size_t size, size_t allignment){
 constexpr size_t frame_size = add_padding(sizeof(video_frame) + sizeof(tile), alignof(video_frame));
 
 struct ug_frames{
-        std::byte* base;
+        std::byte* base = nullptr;
         void init(){
                 base = reinterpret_cast<std::byte*>(malloc(max_frame_count * frame_size));
         }
@@ -527,7 +527,8 @@ void draw_splashscreen(state_vulkan_sdl2& s) {
                 dest += padding;
         }
         try {
-                s.vulkan->queue_image(image);
+                bool discardable;
+                s.vulkan->queue_image(image, true, discardable);
                 s.vulkan->display_queued_image();
         } 
         catch (std::exception& e) { log_and_exit_uv(e); }
@@ -787,7 +788,6 @@ void display_sdl2_done(void* state) {
         }
         s->ug_frames.destroy();
 
-        SDL_QuitSubSystem(SDL_INIT_EVENTS);
         SDL_Quit();
 
         delete s;
@@ -840,7 +840,8 @@ int display_sdl2_putf(void* state, video_frame* frame, long long timeout_ns) {
 
         if (!frame) {
                 s->should_exit = true;
-                s->vulkan->queue_image(vkd::image{});
+                bool discarded;
+                s->vulkan->queue_image(vkd::image{}, true, discarded);
                 return 0;
         }
 
@@ -865,7 +866,9 @@ int display_sdl2_putf(void* state, video_frame* frame, long long timeout_ns) {
         }
         
         try {
-                s->vulkan->queue_image(s->images[id], timeout_ns != PUTF_BLOCKING);
+                bool discarded;
+                s->vulkan->queue_image(s->images[id], timeout_ns != PUTF_BLOCKING, discarded);
+                return discarded;
         } 
         catch (std::exception& e) { log_and_exit_uv(e); return 1; }
         return 0;
