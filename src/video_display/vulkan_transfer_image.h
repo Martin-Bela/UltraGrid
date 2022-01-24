@@ -100,7 +100,6 @@ public:
                 transfer_image{ &image }
         { 
                 assert(image.id != detail::transfer_image::NO_ID);
-                transfer_image->preprocess_fun = nullptr;
         }
 
         uint32_t get_id() {

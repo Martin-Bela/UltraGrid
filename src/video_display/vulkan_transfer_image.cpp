@@ -193,6 +193,7 @@ void transfer_image::preprocess() {
         if (preprocess_fun) {
                 vulkan_display::image img{ *this };
                 preprocess_fun(img);
+                img.set_process_function(nullptr);
         }
 }
 
