@@ -74,6 +74,8 @@ public:
         VKD_RETURN_TYPE prepare_for_rendering(vk::Device device, vk::DescriptorSet descriptor_set, 
                 vk::Sampler sampler, vk::SamplerYcbcrConversion conversion);
 
+        void preprocess();
+
         VKD_RETURN_TYPE destroy(vk::Device device, bool destroy_fence = true);
 
         transfer_image() = default;
@@ -131,12 +133,6 @@ public:
 
         void set_process_function(std::function<void(image& image)> function) {
                 transfer_image->preprocess_fun = std::move(function);
-        }
-
-        void preprocess(){
-                if (transfer_image->preprocess_fun) {
-                        transfer_image->preprocess_fun(*this);
-                }
         }
 };
 

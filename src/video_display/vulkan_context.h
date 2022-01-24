@@ -155,10 +155,10 @@ class vulkan_context {
         vk::PresentModeKHR preferred_present_mode;
 public:
         //getters
-        uint32_t get_vulkan_version() { return vulkan_version; }
+        uint32_t get_vulkan_version() const { return vulkan_version; }
         vk::PhysicalDevice get_gpu() { return gpu; }
         vk::Device get_device() { return device; }
-        bool is_yCbCr_supported() { return yCbCr_supported; }
+        bool is_yCbCr_supported() const { return yCbCr_supported; }
         uint32_t get_queue_familt_index() { return queue_family_index; }
         vk::Queue get_queue() { return queue; }
         vk::SwapchainKHR get_swapchain() { return swapchain; }
@@ -207,7 +207,7 @@ public:
                 return swapchain_images[framebuffer_id].framebuffer;
         }
 
-        window_parameters get_window_parameters() {
+        window_parameters get_window_parameters() const {
                 return { window_size.width, window_size.height };
         }
 

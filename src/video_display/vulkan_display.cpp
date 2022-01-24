@@ -69,12 +69,18 @@ VKD_RETURN_TYPE update_render_area_viewport_scissor(render_area& render_area, vk
         return VKD_RETURN_TYPE();
 }
 
-[[nodiscard]] transfer_image& acquire_transfer_image(
-        concurrent_queue<transfer_image*>& available_img_queue)
+[[nodiscard]] transfer_image& acquire_transfer_image(std::vector<transfer_image*>& available_images,
+        concurrent_queue<transfer_image*>& available_img_queue) 
 {
-        transfer_image* transfer_image = nullptr;
-        available_img_queue.wait_dequeue(transfer_image);
-        return *transfer_image;
+        transfer_image* result = nullptr;
+        if (!available_images.empty()){
+                result = available_images.back();
+                available_images.pop_back();
+        }
+        else{
+                available_img_queue.wait_dequeue(result);
+        }
+        return *result;
 }
 
 vk::PresentModeKHR get_present_mode(bool vsync_enabled, bool tearing_permitted){
@@ -361,13 +367,15 @@ VKD_RETURN_TYPE vulkan_display::init(vulkan_instance&& instance, VkSurfaceKHR su
         context.create_framebuffers(render_pass);
         VKD_PASS_RESULT(create_image_semaphores());
 
-        transfer_images.reserve(transfer_image_count);
-        for (uint32_t i = 0; i < transfer_image_count; i++) {
-                transfer_images.emplace_back(device, i);
-                available_img_queue.wait_enqueue(&transfer_images.back());
-        }
         if (transfer_image_count > 8){
                 available_img_queue = concurrent_queue<transfer_image*>{transfer_image_count};
+        }
+
+        transfer_images.reserve(transfer_image_count);
+        available_images.reserve(transfer_image_count);
+        for (uint32_t i = 0; i < transfer_image_count; i++) {
+                transfer_images.emplace_back(device, i);
+                available_images.push_back(&transfer_images.back());
         }
         return VKD_RETURN_TYPE();
 }
@@ -468,7 +476,7 @@ VKD_RETURN_TYPE vulkan_display::acquire_image(image& result, image_description d
                         VKD_CHECK(false, error_msg);
                 }
         }
-        transfer_image& transfer_image = acquire_transfer_image(available_img_queue);
+        transfer_image& transfer_image = acquire_transfer_image(available_images, available_img_queue);
         assert(transfer_image.get_id() != transfer_image::NO_ID);
         {
                 std::unique_lock device_lock(device_mutex, std::defer_lock);
@@ -494,16 +502,15 @@ VKD_RETURN_TYPE vulkan_display::copy_and_queue_image(std::byte* frame, image_des
         image image;
         acquire_image(image, description);
         memcpy(image.get_memory_ptr(), frame, image.get_size().height * image.get_row_pitch());
-        queue_image(image);
+        bool discardable;
+        queue_image(image, false, discardable);
         return VKD_RETURN_TYPE();
 }
 
-VKD_RETURN_TYPE vulkan_display::queue_image(image image, bool discardable) {
-        // if image is discardable and the filled_img_queue is full
-        if (discardable && filled_img_queue.size_approx() >= filled_img_max_count){
-                available_img_queue.wait_enqueue(image.get_transfer_image());
-        }
-        filled_img_queue.wait_enqueue(image);
+VKD_RETURN_TYPE vulkan_display::queue_image(image image, [[maybe_unused]] bool discardable, bool& discarded) {
+        filled_img_queue.wait_enqueue(image.get_transfer_image());
+        discarded = false;
+
         return VKD_RETURN_TYPE();
 }
 
@@ -512,26 +519,22 @@ VKD_RETURN_TYPE vulkan_display::display_queued_image(bool* displayed) {
                 *displayed = false;
         }
         auto window_parameters = window->get_window_parameters();
-        image image;
+        transfer_image* transfer_image_ptr = nullptr;
         if (window_parameters.width * window_parameters.height == 0) {
-                bool dequeued = filled_img_queue.try_dequeue(image);
-                if (dequeued) {
-                        VKD_PASS_RESULT(discard_image(image));
+                bool dequeued = filled_img_queue.try_dequeue(transfer_image_ptr);
+                if (dequeued && transfer_image_ptr) {
+                        available_img_queue.wait_enqueue(transfer_image_ptr);
                 }
                 return VKD_RETURN_TYPE();
         }
 
-        bool dequeued = filled_img_queue.wait_dequeue_timed(image, waiting_time_for_filled_image);
-        if (!dequeued) {
-                return VKD_RETURN_TYPE();
-        }
-        if (!image.get_transfer_image()) {
+        bool dequeued = filled_img_queue.wait_dequeue_timed(transfer_image_ptr, waiting_time_for_filled_image);
+        if (!dequeued || !transfer_image_ptr) {
                 return VKD_RETURN_TYPE();
         }
 
-        image.preprocess();
-
-        transfer_image& transfer_image = *image.get_transfer_image();
+        transfer_image& transfer_image = *transfer_image_ptr;
+        transfer_image.preprocess();
 
         auto& semaphores = image_semaphores[transfer_image.get_id()];
 
@@ -563,10 +566,10 @@ VKD_RETURN_TYPE vulkan_display::display_queued_image(bool* displayed) {
                 window_parameters = window->get_window_parameters();
                 if (window_parameters.width * window_parameters.height == 0) {
                         // window is minimalised
-                        ::vulkan_display::image image;
-                        auto dequeued = filled_img_queue.try_dequeue(image);
+                        ::transfer_image* transfer_image_ptr;
+                        auto dequeued = filled_img_queue.try_dequeue(transfer_image_ptr);
                         if (dequeued) {
-                                VKD_PASS_RESULT(discard_image(image));
+                                available_img_queue.wait_enqueue(transfer_image_ptr);
                         }
                         return VKD_RETURN_TYPE();
                 }

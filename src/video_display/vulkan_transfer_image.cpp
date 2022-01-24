@@ -189,6 +189,13 @@ VKD_RETURN_TYPE transfer_image::prepare_for_rendering(vk::Device device,
         return VKD_RETURN_TYPE();
 }
 
+void transfer_image::preprocess() {
+        if (preprocess_fun) {
+                vulkan_display::image img{ *this };
+                preprocess_fun(img);
+        }
+}
+
 VKD_RETURN_TYPE transfer_image::destroy(vk::Device device, bool destroy_fence) {
         if (is_available_fence) {
                 auto result = device.waitForFences(is_available_fence, true, UINT64_MAX);
