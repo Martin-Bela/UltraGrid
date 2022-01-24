@@ -79,6 +79,8 @@
 #include <string>
 #include <string_view>
 
+#include"concurrent_queue/readerwritercircularbuffer.h"
+#include"concurrent_queue/readerwriterqueue.h"
 #include "debug.h"
 #include "gl_context.h"
 #include "host.h"
@@ -279,13 +281,12 @@ struct state_gl {
 
         struct video_frame *current_frame;
 
-        queue<struct video_frame *> frame_queue;
-        queue<struct video_frame *> free_frame_queue;
+        moodycamel::BlockingReaderWriterCircularBuffer<struct video_frame *> frame_queue{8};
+        moodycamel::ReaderWriterQueue<video_frame*> free_frame_queue;
+        std::vector<video_frame*> free_frames;
+
         struct video_desc current_desc;
         struct video_desc current_display_desc;
-        mutex           lock;
-        condition_variable new_frame_ready_cv;
-        condition_variable frame_consumed_cv;
 
         double          aspect;
         double          video_aspect;
@@ -301,7 +302,7 @@ struct state_gl {
         chrono::steady_clock::time_point                      cursor_shown_from; ///< indicates time point from which is cursor show if show_cursor == SC_AUTOHIDE, timepoint() means cursor is not currently shown
         string          syphon_spout_srv_name;
 
-        bool should_exit_main_loop; // used only for GLUT (not freeglut)
+        std::atomic<bool> should_exit_main_loop; // used only for GLUT (not freeglut)
 
         double          window_size_factor;
 
@@ -435,7 +436,7 @@ static void gl_load_splashscreen(struct state_gl *s)
                 }
         }
 
-        s->frame_queue.push(frame);
+        s->frame_queue.wait_enqueue(frame);
 }
 
 static void * display_gl_init(struct module *parent, const char *fmt, unsigned int flags) {
@@ -543,7 +544,7 @@ static void * display_gl_init(struct module *parent, const char *fmt, unsigned i
                 desc.fps = 1;
                 desc.tile_count = 1;
 
-                s->frame_queue.push(vf_alloc_desc_data(desc));
+                s->frame_queue.wait_enqueue(vf_alloc_desc_data(desc));
         }
 
         gl_load_splashscreen(s);
@@ -882,14 +883,6 @@ static void gl_render(struct state_gl *s, char *data)
         gl_check_error();
 }
 
-static void pop_frame(struct state_gl *s)
-{
-        unique_lock<mutex> lk(s->lock);
-        s->frame_queue.pop();
-        lk.unlock();
-        s->frame_consumed_cv.notify_one();
-}
-
 static void glut_idle_callback(void)
 {
         struct state_gl *s = gl;
@@ -934,37 +927,29 @@ static void glut_idle_callback(void)
         }
 
         {
-                unique_lock<mutex> lk(s->lock);
                 double timeout = min(2.0 / s->current_display_desc.fps, 0.1);
-                s->new_frame_ready_cv.wait_for(lk, chrono::duration<double>(timeout), [s] {
-                                return s->frame_queue.size() > 0;});
-                if (s->frame_queue.size() == 0) {
+                bool dequeued = s->frame_queue.wait_dequeue_timed(frame, chrono::duration<double>(timeout));
+                if (!dequeued){
                         return;
                 }
-                frame = s->frame_queue.front();
         }
 
         if (!frame) {
 #ifdef FREEGLUT
                 glutLeaveMainLoop();
 #endif
-                pop_frame(s);
                 return;
         }
 
         if (s->paused) {
-                pop_frame(s);
-                unique_lock<mutex> lk(s->lock);
                 vf_recycle(frame);
-                s->free_frame_queue.push(frame);
+                s->free_frame_queue.emplace(frame);
                 return;
         }
 
         if (s->current_frame) {
-                s->lock.lock();
                 vf_recycle(s->current_frame);
-                s->free_frame_queue.push(s->current_frame);
-                s->lock.unlock();
+                s->free_frame_queue.emplace(s->current_frame);
         }
         s->current_frame = frame;
 
@@ -987,7 +972,6 @@ static void glut_idle_callback(void)
 
         glutSwapBuffers();
         log_msg(LOG_LEVEL_DEBUG, "Render buffer %dx%d\n", frame->tiles[0].width, frame->tiles[0].height);
-        pop_frame(s);
 
         /* FPS Data, this is pretty ghetto though.... */
         s->frames++;
@@ -1841,18 +1825,18 @@ static void display_gl_done(void *state)
         if (s->pbo_id)
                 glDeleteBuffersARB(1, &s->pbo_id);
 
-        while (s->free_frame_queue.size() > 0) {
-                struct video_frame *buffer = s->free_frame_queue.front();
-                s->free_frame_queue.pop();
+        struct video_frame *buffer;
+        while (s->free_frame_queue.try_dequeue(buffer)) {
                 vf_free(buffer);
         }
 
-        while (s->frame_queue.size() > 0) {
-                struct video_frame *buffer = s->frame_queue.front();
-                s->frame_queue.pop();
+        while (s->frame_queue.try_dequeue(buffer)) {
                 vf_free(buffer);
         }
-
+        for(auto* buffer: s->free_frames){
+                vf_free(buffer);
+        }
+        s->free_frames.resize(0);
         vf_free(s->current_frame);
 
         if (s->syphon_spout) {
@@ -1873,11 +1857,9 @@ static struct video_frame * display_gl_getf(void *state)
         struct state_gl *s = (struct state_gl *) state;
         assert(s->magic == MAGIC_GL);
 
-        lock_guard<mutex> lock(s->lock);
-
-        while (s->free_frame_queue.size() > 0) {
-                struct video_frame *buffer = s->free_frame_queue.front();
-                s->free_frame_queue.pop();
+        while (!s->free_frames.empty()) {
+                struct video_frame *buffer = s->free_frames.back();
+                s->free_frames.pop_back();
                 if (video_desc_eq(video_desc_from_frame(buffer), s->current_desc)) {
                         return buffer;
                 } else {
@@ -1885,7 +1867,16 @@ static struct video_frame * display_gl_getf(void *state)
                 }
         }
 
-        struct video_frame *buffer = vf_alloc_desc_data(s->current_desc);
+        struct video_frame *buffer = nullptr;
+        while (s->free_frame_queue.try_dequeue(buffer)) {
+                if (video_desc_eq(video_desc_from_frame(buffer), s->current_desc)) {
+                        return buffer;
+                } else {
+                        vf_free(buffer);
+                }
+        }
+
+        buffer = vf_alloc_desc_data(s->current_desc);
         clear_video_buffer(reinterpret_cast<unsigned char *>(buffer->tiles[0].data),
                         vc_get_linesize(buffer->tiles[0].width, buffer->color_spec),
                         vc_get_linesize(buffer->tiles[0].width, buffer->color_spec),
@@ -1900,31 +1891,23 @@ static int display_gl_putf(void *state, struct video_frame *frame, int nonblock)
 
         assert(s->magic == MAGIC_GL);
 
-        unique_lock<mutex> lk(s->lock);
-
         if(!frame) {
                 s->should_exit_main_loop = true; // used only for GLUT (not freeglut)
-                s->frame_queue.push(frame);
-                lk.unlock();
-                s->new_frame_ready_cv.notify_one();
+                s->frame_queue.wait_enqueue(frame);
                 return 0;
         }
 
         if (nonblock == PUTF_DISCARD) {
                 vf_recycle(frame);
-                s->free_frame_queue.push(frame);
+                s->free_frames.push_back(frame);
                 return 0;
         }
-        if (s->frame_queue.size() >= MAX_BUFFER_SIZE && nonblock == PUTF_NONBLOCK) {
+        if (nonblock == PUTF_NONBLOCK && s->frame_queue.size_approx() >= MAX_BUFFER_SIZE) {
                 vf_recycle(frame);
-                s->free_frame_queue.push(frame);
+                s->free_frames.push_back(frame);
                 return 1;
         }
-        s->frame_consumed_cv.wait(lk, [s]{return s->frame_queue.size() < MAX_BUFFER_SIZE;});
-        s->frame_queue.push(frame);
-
-        lk.unlock();
-        s->new_frame_ready_cv.notify_one();
+        s->frame_queue.wait_enqueue(frame);
 
         return 0;
 }
