@@ -507,10 +507,16 @@ VKD_RETURN_TYPE vulkan_display::copy_and_queue_image(std::byte* frame, image_des
         return VKD_RETURN_TYPE();
 }
 
-VKD_RETURN_TYPE vulkan_display::queue_image(image image, [[maybe_unused]] bool discardable, bool& discarded) {
-        filled_img_queue.wait_enqueue(image.get_transfer_image());
-        discarded = false;
-
+VKD_RETURN_TYPE vulkan_display::queue_image(image image, bool discardable, bool& discarded) {
+        // if image is discardable and the filled_img_queue is full
+        if (discardable && filled_img_queue.size_approx() > filled_img_max_count){
+                available_images.push_back(image.get_transfer_image());
+                discarded = true;
+        }
+        else{
+                filled_img_queue.wait_enqueue(image.get_transfer_image());
+                discarded = false;
+        }
         return VKD_RETURN_TYPE();
 }
 
