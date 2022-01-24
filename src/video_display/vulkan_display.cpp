@@ -629,6 +629,7 @@ VKD_RETURN_TYPE vulkan_display::display_queued_image(bool* displayed) {
 
 VKD_RETURN_TYPE vulkan_display::window_parameters_changed(window_parameters new_parameters) {
         if (new_parameters != context.get_window_parameters() && new_parameters.width * new_parameters.height != 0) {
+                std::scoped_lock lock{device_mutex};
                 VKD_PASS_RESULT(context.recreate_swapchain(new_parameters, render_pass));
                 VKD_PASS_RESULT(update_render_area_viewport_scissor(render_area, viewport, scissor,
                         { new_parameters.width, new_parameters.height }, current_image_description.size));

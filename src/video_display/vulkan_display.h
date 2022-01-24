@@ -177,9 +177,12 @@ public:
 
         /**
          * @brief Hint to vulkan display that some window parameters spicified in struct Window_parameters changed.
+         * Thread-safe.
          */
         VKD_RETURN_TYPE window_parameters_changed(window_parameters new_parameters);
 
+        
+        /** Thread-safe */
         VKD_RETURN_TYPE window_parameters_changed() {
                 VKD_PASS_RESULT(window_parameters_changed(window->get_window_parameters()));
                 return VKD_RETURN_TYPE();
