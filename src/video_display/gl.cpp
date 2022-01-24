@@ -927,8 +927,8 @@ static void glut_idle_callback(void)
         }
 
         {
-                double timeout = min(2.0 / s->current_display_desc.fps, 0.1);
-                bool dequeued = s->frame_queue.wait_dequeue_timed(frame, chrono::duration<double>(timeout));
+                auto timeout = 50ms;
+                bool dequeued = s->frame_queue.wait_dequeue_timed(frame, timeout);
                 if (!dequeued){
                         return;
                 }
