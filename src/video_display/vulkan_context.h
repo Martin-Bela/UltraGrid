@@ -97,6 +97,9 @@ struct window_parameters {
         constexpr bool operator!=(const window_parameters& other) const {
                 return !(*this == other);
         }
+        constexpr bool is_minimized() const {
+                return width * height == 0;
+        }
 };
 
 constexpr uint32_t no_gpu_selected = UINT32_MAX;

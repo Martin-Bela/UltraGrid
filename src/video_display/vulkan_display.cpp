@@ -91,6 +91,16 @@ vk::PresentModeKHR get_present_mode(bool vsync_enabled, bool tearing_permitted){
         return tearing_permitted ? e::eImmediate : e::eMailbox;
 }
 
+void discard_filled_image(concurrent_queue<transfer_image*>& filled_img_queue, 
+        concurrent_queue<transfer_image*>& available_img_queue)
+{
+        transfer_image* transfer_image = nullptr;
+        bool dequeued = filled_img_queue.try_dequeue(transfer_image);
+        if (dequeued && transfer_image) {
+                available_img_queue.wait_enqueue(transfer_image);
+        }
+}
+
 } //namespace -------------------------------------------------------------
 
 
@@ -525,15 +535,12 @@ VKD_RETURN_TYPE vulkan_display::display_queued_image(bool* displayed) {
                 *displayed = false;
         }
         auto window_parameters = window->get_window_parameters();
-        transfer_image* transfer_image_ptr = nullptr;
-        if (window_parameters.width * window_parameters.height == 0) {
-                bool dequeued = filled_img_queue.try_dequeue(transfer_image_ptr);
-                if (dequeued && transfer_image_ptr) {
-                        available_img_queue.wait_enqueue(transfer_image_ptr);
-                }
+        if (window_parameters.is_minimized()) {
+                discard_filled_image(filled_img_queue, available_img_queue);
                 return VKD_RETURN_TYPE();
         }
 
+        transfer_image* transfer_image_ptr = nullptr;
         bool dequeued = filled_img_queue.wait_dequeue_timed(transfer_image_ptr, waiting_time_for_filled_image);
         if (!dequeued || !transfer_image_ptr) {
                 return VKD_RETURN_TYPE();
@@ -569,14 +576,9 @@ VKD_RETURN_TYPE vulkan_display::display_queued_image(bool* displayed) {
                 swapchain_recreation_attempt++;
                 VKD_CHECK(swapchain_recreation_attempt <= 3, "Cannot acquire swapchain image");
                 
-                window_parameters = window->get_window_parameters();
-                if (window_parameters.width * window_parameters.height == 0) {
-                        // window is minimalised
-                        ::transfer_image* transfer_image_ptr;
-                        auto dequeued = filled_img_queue.try_dequeue(transfer_image_ptr);
-                        if (dequeued) {
-                                available_img_queue.wait_enqueue(transfer_image_ptr);
-                        }
+                auto window_parameters = window->get_window_parameters();
+                if (window_parameters.is_minimized()) {
+                        discard_filled_image(filled_img_queue, available_img_queue);
                         return VKD_RETURN_TYPE();
                 }
                 VKD_PASS_RESULT(context.recreate_swapchain(window_parameters, render_pass));
