@@ -76,6 +76,7 @@ class vulkan_display {
         vk::CommandPool command_pool;
         std::vector<vk::CommandBuffer> command_buffers{};
 
+        image_description current_image_description;
 
         struct image_semaphores {
                 vk::Semaphore image_acquired;
@@ -84,10 +85,9 @@ class vulkan_display {
         std::vector<image_semaphores> image_semaphores;
 
 
-        using transfer_image = detail::transfer_image;
         unsigned transfer_image_count = 0;
+        using transfer_image = detail::transfer_image;
         std::vector<transfer_image> transfer_images{};
-        image_description current_image_description;
 
         /// available_img_queue - producer is the render thread, consumer is the provided thread
         detail::concurrent_queue<transfer_image*> available_img_queue{8};
