@@ -150,7 +150,7 @@ constexpr size_t frame_size = add_padding(sizeof(video_frame) + sizeof(tile), al
 struct ug_frames{
         std::byte* base = nullptr;
         void init(){
-                base = reinterpret_cast<std::byte*>(malloc(max_frame_count * frame_size));
+                base = static_cast<std::byte*>(calloc(max_frame_count, frame_size));
         }
         void destroy(){
                 if (base) {
@@ -567,7 +567,6 @@ bool parse_command_line_arguments(command_line_arguments& args, state_vulkan_sdl
                 return token;
         };
         
-        auto& res = args;
         while (!arguments_sv.empty()) try {
                 const std::string_view token = next_token(arguments_sv);
                 if (token.empty()) {
@@ -602,17 +601,17 @@ bool parse_command_line_arguments(command_line_arguments& args, state_vulkan_sdl
                 } else if (token == "nodecorate") {
                         args.window_flags |= SDL_WINDOW_BORDERLESS;
                 } else if (token == "novsync") {
-                        res.vsync = false;
+                        args.vsync = false;
                 } else if (token == "tearing") {
-                        res.tearing_permitted = true;
+                        args.tearing_permitted = true;
                 } else if (token == "validation") {
-                        res.validation = true;
+                        args.validation = true;
                 } else if (starts_with(token, "display=")) {
                         constexpr auto pos = "display="sv.size();
-                        res.display_idx = svtoi(token.substr(pos));
+                        args.display_idx = svtoi(token.substr(pos));
                 } else if (starts_with(token, "driver=")) {
                         constexpr auto pos = "driver="sv.size();
-                        res.driver = std::string{ token.substr(pos) };
+                        args.driver = std::string{ token.substr(pos) };
                 } else if (starts_with(token, "gpu=")) {
                         constexpr auto pos = "gpu="sv.size();
                         args.gpu_idx = svtoi(token.substr(pos));
@@ -625,8 +624,8 @@ bool parse_command_line_arguments(command_line_arguments& args, state_vulkan_sdl
                                         << token << '\n';
                                 return false;
                         }
-                        res.x = svtoi(tok.substr(0, comma));
-                        res.y = svtoi(tok.substr(comma + 1));
+                        args.x = svtoi(tok.substr(0, comma));
+                        args.y = svtoi(tok.substr(comma + 1));
                 } else if (starts_with(token, "size=")) {
                         auto tok = token;
                         tok.remove_prefix("size="sv.size());
@@ -644,7 +643,7 @@ bool parse_command_line_arguments(command_line_arguments& args, state_vulkan_sdl
                         args.window_flags |= flags;
                 } else if (token == "help") {
                         show_help();
-                        res.help = true;
+                        args.help = true;
                 } else {
                         LOG(LOG_LEVEL_ERROR) << wrong_option_msg << token << '\n';
                         return false;
@@ -956,13 +955,13 @@ int display_sdl2_reconfigure_audio([[maybe_unused]] void* state, [[maybe_unused]
 }
 
 const video_display_info display_sdl2_info = {
-        [](device_info** available_cards, int* count, void (**deleter)(void*)) {
-                UNUSED(deleter);
+        [](device_info** available_cards, int* count, [[maybe_unused]] void (**deleter)(void*)) {
                 *count = 1;
-                *available_cards = (device_info*)calloc(1, sizeof(device_info));
-                strcpy((*available_cards)[0].dev, "");
-                strcpy((*available_cards)[0].name, "VULKAN_SDL2 SW display");
-                (*available_cards)[0].repeatable = true;
+                *available_cards = static_cast<device_info*>(calloc(1, sizeof(device_info)));
+                auto& info = **available_cards;
+                strcpy(info.dev, "");
+                strcpy(info.name, "VULKAN_SDL2 SW display");
+                info.repeatable = true;
         },
         display_sdl2_init,
         display_sdl2_run,
