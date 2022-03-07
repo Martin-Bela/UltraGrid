@@ -3,6 +3,7 @@
  * @author Lukas Hejtmanek  <xhejtman@ics.muni.cz>
  * @author Milos Liska      <xliska@fi.muni.cz>
  * @author Martin Pulec     <pulec@cesnet.cz>
+ * @author Martin Be¾a      <492789@mail.muni.cz>
  */
  /*
   * Copyright (c) 2018-2021 CESNET, z. s. p. o.
