@@ -35,7 +35,7 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "vulkan_transfer_image.h"
+#include "vulkan_transfer_image.hpp"
 
 using namespace vulkan_display_detail;
 namespace vkd = vulkan_display;

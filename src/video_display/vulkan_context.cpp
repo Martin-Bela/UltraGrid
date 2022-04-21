@@ -35,7 +35,7 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "vulkan_context.h"
+#include "vulkan_context.hpp"
 #include <cassert>
 #include <iostream>
 

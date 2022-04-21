@@ -38,8 +38,8 @@
 #pragma once
 
 #include "concurrent_queue/readerwritercircularbuffer.h"
-#include "vulkan_context.h"
-#include "vulkan_transfer_image.h"
+#include "vulkan_context.hpp"
+#include "vulkan_transfer_image.hpp"
 
 
 #include <mutex>

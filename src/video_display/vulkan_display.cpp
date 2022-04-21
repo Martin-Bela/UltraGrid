@@ -35,7 +35,7 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "vulkan_display.h"
+#include "vulkan_display.hpp"
 
 #include <algorithm>
 #include <cmath>
