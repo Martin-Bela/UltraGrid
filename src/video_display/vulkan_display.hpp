@@ -37,7 +37,7 @@
 
 #pragma once
 
-#include "concurrent_queue/readerwritercircularbuffer.h"
+#include "ext-deps/readerwriterqueue/readerwritercircularbuffer.h"
 #include "vulkan_context.hpp"
 #include "vulkan_transfer_image.hpp"
 
