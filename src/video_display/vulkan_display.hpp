@@ -137,27 +137,27 @@ class vulkan_display {
         bool destroyed = false;
 private:
 
-        VKD_RETURN_TYPE create_texture_sampler(vk::Format format);
+        void create_texture_sampler(vk::Format format);
 
-        VKD_RETURN_TYPE create_render_pass();
+        void create_render_pass();
 
-        VKD_RETURN_TYPE create_descriptor_set_layout();
+        void create_descriptor_set_layout();
 
-        VKD_RETURN_TYPE create_pipeline_layout();
+        void create_pipeline_layout();
 
-        VKD_RETURN_TYPE create_graphics_pipeline();
+        void create_graphics_pipeline();
 
-        VKD_RETURN_TYPE create_command_pool();
+        void create_command_pool();
 
-        VKD_RETURN_TYPE create_command_buffers();
+        void create_command_buffers();
 
-        VKD_RETURN_TYPE create_transfer_image(transfer_image*& result, image_description description);
+        void create_transfer_image(transfer_image*& result, image_description description);
 
-        VKD_RETURN_TYPE create_image_semaphores();
+        void create_image_semaphores();
 
-        VKD_RETURN_TYPE allocate_description_sets();
+        void allocate_description_sets();
 
-        VKD_RETURN_TYPE record_graphics_commands(transfer_image& transfer_image, uint32_t swapchain_image_id);
+        void record_graphics_commands(transfer_image& transfer_image, uint32_t swapchain_image_id);
 
 public:
         /// TERMINOLOGY:
@@ -177,34 +177,34 @@ public:
                 }
         }
 
-        VKD_RETURN_TYPE init(vulkan_instance&& instance, VkSurfaceKHR surface, uint32_t transfer_image_count,
+        void init(vulkan_instance&& instance, VkSurfaceKHR surface, uint32_t transfer_image_count,
                 window_changed_callback& window, uint32_t gpu_index = no_gpu_selected,
                 std::filesystem::path path_to_shaders = "./shaders", bool vsync = true, bool tearing_permitted = false);
 
-        VKD_RETURN_TYPE destroy();
+        void destroy();
 
         /** Thread-safe */
-        VKD_RETURN_TYPE is_image_description_supported(bool& supported, image_description description);
+        void is_image_description_supported(bool& supported, image_description description);
 
         /** Thread-safe to call from provider thread.*/
-        VKD_RETURN_TYPE acquire_image(image& image, image_description description);
+        void acquire_image(image& image, image_description description);
 
         /** Thread-safe to call from provider thread.*/
-        VKD_RETURN_TYPE queue_image(image img, bool discardable, bool& discarded);
+        void queue_image(image img, bool discardable, bool& discarded);
 
         /** Thread-safe to call from provider thread.*/
-        VKD_RETURN_TYPE copy_and_queue_image(std::byte* frame, image_description description);
+        void copy_and_queue_image(std::byte* frame, image_description description);
 
         /** Thread-safe to call from provider thread.*/
-        VKD_RETURN_TYPE discard_image(image image) {
+        void discard_image(image image) {
                 auto* ptr = image.get_transfer_image();
                 assert(ptr);
                 available_images.push_back(ptr);
-                return VKD_RETURN_TYPE();
+                return void();
         }
 
         /** Thread-safe to call from render thread.*/
-        VKD_RETURN_TYPE display_queued_image(bool* displayed = nullptr);
+        void display_queued_image(bool* displayed = nullptr);
 
         /** Thread-safe*/
         uint32_t get_vulkan_version() const { return context.get_vulkan_version(); }
@@ -216,13 +216,13 @@ public:
          * @brief Hint to vulkan display that some window parameters spicified in struct Window_parameters changed.
          * Thread-safe.
          */
-        VKD_RETURN_TYPE window_parameters_changed(window_parameters new_parameters);
+        void window_parameters_changed(window_parameters new_parameters);
 
         
         /** Thread-safe */
-        VKD_RETURN_TYPE window_parameters_changed() {
-                VKD_PASS_RESULT(window_parameters_changed(window->get_window_parameters()));
-                return VKD_RETURN_TYPE();
+        void window_parameters_changed() {
+                window_parameters_changed(window->get_window_parameters());
+                return void();
         }
 };
 

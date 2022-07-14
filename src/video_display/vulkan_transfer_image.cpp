@@ -58,7 +58,7 @@ constexpr bool flags_present(T provided_flags, T required_flags) {
         return (provided_flags & required_flags) == required_flags;
 }
 
-VKD_RETURN_TYPE get_memory_type(
+void get_memory_type(
         uint32_t& memory_type, uint32_t memory_type_bits,
         vk::MemoryPropertyFlags requested_properties, vk::MemoryPropertyFlags optional_properties,
         vk::PhysicalDevice gpu)
@@ -72,17 +72,17 @@ VKD_RETURN_TYPE get_memory_type(
                 if (flags_present(mem_type.propertyFlags, requested_properties) && is_type_usable) {
                         if (flags_present(mem_type.propertyFlags, optional_properties)) {
                                 memory_type = i;
-                                return VKD_RETURN_TYPE();
+                                return void();
                         }
                         possible_memory_type = i;
                 }
         }
         if (possible_memory_type != UINT32_MAX) {
                 memory_type = possible_memory_type;
-                return VKD_RETURN_TYPE();
+                return void();
         }
         VKD_CHECK(false, "No available memory for transfer images found.");
-        return VKD_RETURN_TYPE();
+        return void();
 }
 
 constexpr vk::ImageType image_type = vk::ImageType::e2D;
@@ -93,7 +93,7 @@ constexpr vk::ImageCreateFlags image_create_flags = {};
 
 namespace vulkan_display_detail{
 
-VKD_RETURN_TYPE transfer_image::is_image_description_supported(bool& supported, vk::PhysicalDevice gpu, 
+void transfer_image::is_image_description_supported(bool& supported, vk::PhysicalDevice gpu, 
         vkd::image_description description)
 {
         vk::ImageFormatProperties properties;
@@ -106,22 +106,22 @@ VKD_RETURN_TYPE transfer_image::is_image_description_supported(bool& supported, 
                 &properties);
         if (result == vk::Result::eErrorFormatNotSupported) {
                 supported = false;
-                return VKD_RETURN_TYPE();
+                return void();
         }
         VKD_CHECK(result, "Error queriing image properties:")
         supported = description.size.height <= properties.maxExtent.height
                 && description.size.width <= properties.maxExtent.width;
-        return VKD_RETURN_TYPE();
+        return void();
 }
 
-VKD_RETURN_TYPE transfer_image::init(vk::Device device, uint32_t id) {
+void transfer_image::init(vk::Device device, uint32_t id) {
         this->id = id;
         vk::FenceCreateInfo fence_info{ vk::FenceCreateFlagBits::eSignaled };
         VKD_CHECKED_ASSIGN(is_available_fence, device.createFence(fence_info));
-        return VKD_RETURN_TYPE();
+        return void();
 }
 
-VKD_RETURN_TYPE transfer_image::create(vk::Device device, vk::PhysicalDevice gpu,
+void transfer_image::create(vk::Device device, vk::PhysicalDevice gpu,
         vkd::image_description description)
 {
         assert(id != NO_ID);
@@ -152,13 +152,13 @@ VKD_RETURN_TYPE transfer_image::create(vk::Device device, vk::PhysicalDevice gpu
 
         using mem_bits = vk::MemoryPropertyFlagBits;
         uint32_t memory_type = 0;
-        VKD_PASS_RESULT(get_memory_type(memory_type, memory_requirements.memoryTypeBits,
-                mem_bits::eHostVisible | mem_bits::eHostCoherent, mem_bits::eHostCached, gpu));
+        get_memory_type(memory_type, memory_requirements.memoryTypeBits,
+                mem_bits::eHostVisible | mem_bits::eHostCoherent, mem_bits::eHostCached, gpu);
 
         vk::MemoryAllocateInfo allocInfo{ byte_size , memory_type };
         VKD_CHECKED_ASSIGN(memory, device.allocateMemory(allocInfo));
 
-        VKD_PASS_RESULT(device.bindImageMemory(image, memory, 0));
+        device.bindImageMemory(image, memory, 0);
 
         void* void_ptr = nullptr;
         VKD_CHECKED_ASSIGN(void_ptr, device.mapMemory(memory, 0, memory_requirements.size));
@@ -167,7 +167,7 @@ VKD_RETURN_TYPE transfer_image::create(vk::Device device, vk::PhysicalDevice gpu
 
         vk::ImageSubresource subresource{ vk::ImageAspectFlagBits::eColor, 0, 0 };
         row_pitch = device.getImageSubresourceLayout(image, subresource).rowPitch;
-        return VKD_RETURN_TYPE();
+        return void();
 }
 
 vk::ImageMemoryBarrier  transfer_image::create_memory_barrier(
@@ -193,7 +193,7 @@ vk::ImageMemoryBarrier  transfer_image::create_memory_barrier(
         return memory_barrier;
 }
 
-VKD_RETURN_TYPE transfer_image::prepare_for_rendering(vk::Device device, 
+void transfer_image::prepare_for_rendering(vk::Device device, 
         vk::DescriptorSet descriptor_set, vk::Sampler sampler, vk::SamplerYcbcrConversion conversion) 
 {
         if (!view) {
@@ -223,7 +223,7 @@ VKD_RETURN_TYPE transfer_image::prepare_for_rendering(vk::Device device,
 
                 device.updateDescriptorSets(descriptor_writes, nullptr);
         }
-        return VKD_RETURN_TYPE();
+        return void();
 }
 
 void transfer_image::preprocess() {
@@ -234,7 +234,7 @@ void transfer_image::preprocess() {
         }
 }
 
-VKD_RETURN_TYPE transfer_image::destroy(vk::Device device, bool destroy_fence) {
+void transfer_image::destroy(vk::Device device, bool destroy_fence) {
         if (is_available_fence) {
                 auto result = device.waitForFences(is_available_fence, true, UINT64_MAX);
                 VKD_CHECK(result, "Waiting for transfer image fence failed.");
@@ -250,7 +250,7 @@ VKD_RETURN_TYPE transfer_image::destroy(vk::Device device, bool destroy_fence) {
         if (destroy_fence) {
                 device.destroy(is_available_fence);
         }
-        return VKD_RETURN_TYPE();
+        return void();
 }
 
 } //vulkan_display_detail
