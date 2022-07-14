@@ -58,8 +58,8 @@ constexpr bool flags_present(T provided_flags, T required_flags) {
         return (provided_flags & required_flags) == required_flags;
 }
 
-void get_memory_type(
-        uint32_t& memory_type, uint32_t memory_type_bits,
+uint32_t get_memory_type(
+        uint32_t memory_type_bits,
         vk::MemoryPropertyFlags requested_properties, vk::MemoryPropertyFlags optional_properties,
         vk::PhysicalDevice gpu)
 {
@@ -71,18 +71,15 @@ void get_memory_type(
                 auto& mem_type = supported_properties.memoryTypes[i];
                 if (flags_present(mem_type.propertyFlags, requested_properties) && is_type_usable) {
                         if (flags_present(mem_type.propertyFlags, optional_properties)) {
-                                memory_type = i;
-                                return void();
+                                return i;
                         }
                         possible_memory_type = i;
                 }
         }
         if (possible_memory_type != UINT32_MAX) {
-                memory_type = possible_memory_type;
-                return void();
+                return possible_memory_type;
         }
         throw vulkan_display_exception{"No available memory for transfer images found."};
-        return void();
 }
 
 constexpr vk::ImageType image_type = vk::ImageType::e2D;
@@ -93,9 +90,7 @@ constexpr vk::ImageCreateFlags image_create_flags = {};
 
 namespace vulkan_display_detail{
 
-void transfer_image::is_image_description_supported(bool& supported, vk::PhysicalDevice gpu, 
-        vkd::image_description description)
-{
+bool transfer_image::is_image_description_supported(vk::PhysicalDevice gpu, vkd::image_description description) {
         vk::ImageFormatProperties properties;
         auto result = gpu.getImageFormatProperties(
                 description.format,
@@ -108,22 +103,19 @@ void transfer_image::is_image_description_supported(bool& supported, vk::Physica
                 case vk::Result::eSuccess:
                         break;
                 case vk::Result::eErrorFormatNotSupported:
-                        supported = false;
-                        return void();
+                        return false;
                 default:
                         throw vulkan_display_exception{"Error queriing image properties."};
         }
 
-        supported = description.size.height <= properties.maxExtent.height
+        return description.size.height <= properties.maxExtent.height
                 && description.size.width <= properties.maxExtent.width;
-        return void();
 }
 
 void transfer_image::init(vk::Device device, uint32_t id) {
         this->id = id;
         vk::FenceCreateInfo fence_info{ vk::FenceCreateFlagBits::eSignaled };
         is_available_fence = device.createFence(fence_info);
-        return void();
 }
 
 void transfer_image::create(vk::Device device, vk::PhysicalDevice gpu,
@@ -156,8 +148,7 @@ void transfer_image::create(vk::Device device, vk::PhysicalDevice gpu,
         vk::DeviceSize byte_size = add_padding(memory_requirements.size, memory_requirements.alignment);
 
         using mem_bits = vk::MemoryPropertyFlagBits;
-        uint32_t memory_type = 0;
-        get_memory_type(memory_type, memory_requirements.memoryTypeBits,
+        uint32_t memory_type = get_memory_type(memory_requirements.memoryTypeBits,
                 mem_bits::eHostVisible | mem_bits::eHostCoherent, mem_bits::eHostCached, gpu);
 
         vk::MemoryAllocateInfo allocInfo{ byte_size , memory_type };
@@ -173,7 +164,6 @@ void transfer_image::create(vk::Device device, vk::PhysicalDevice gpu,
 
         vk::ImageSubresource subresource{ vk::ImageAspectFlagBits::eColor, 0, 0 };
         row_pitch = device.getImageSubresourceLayout(image, subresource).rowPitch;
-        return void();
 }
 
 vk::ImageMemoryBarrier  transfer_image::create_memory_barrier(
@@ -229,7 +219,6 @@ void transfer_image::prepare_for_rendering(vk::Device device,
 
                 device.updateDescriptorSets(descriptor_writes, nullptr);
         }
-        return void();
 }
 
 void transfer_image::preprocess() {
@@ -258,7 +247,6 @@ void transfer_image::destroy(vk::Device device, bool destroy_fence) {
         if (destroy_fence) {
                 device.destroy(is_available_fence);
         }
-        return void();
 }
 
 } //vulkan_display_detail

@@ -184,7 +184,7 @@ public:
 
         void create_framebuffers(vk::RenderPass render_pass);
 
-        void acquire_next_swapchain_image(uint32_t& image_index, vk::Semaphore acquire_semaphore) const;
+        uint32_t acquire_next_swapchain_image(vk::Semaphore acquire_semaphore) const;
 
         vk::Framebuffer get_framebuffer(uint32_t framebuffer_id) {
                 return swapchain_images[framebuffer_id].framebuffer;

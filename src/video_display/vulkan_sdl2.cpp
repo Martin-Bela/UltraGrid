@@ -394,14 +394,13 @@ void display_sdl2_run(void* state) {
         s->time = chrono::steady_clock::now();
         while (!s->should_exit) {
                 process_events(*s);
-                bool displayed = false;
                 try {
-                        s->vulkan->display_queued_image(&displayed);
+                        bool displayed = s->vulkan->display_queued_image();
+                        if (displayed) {
+                                s->frames++;
+                        }
                 } 
                 catch (std::exception& e) { log_and_exit_uv(e); break; }
-                if (displayed) {
-                        s->frames++;
-                }
                 auto now = chrono::steady_clock::now();
                 double seconds = chrono::duration<double>{ now - s->time }.count();
                 if (seconds > 5) {
@@ -513,7 +512,7 @@ int display_sdl2_reconfigure(void* state, video_desc desc) {
 void draw_splashscreen(state_vulkan_sdl2& s) {
         vkd::image image;
         try {
-                s.vulkan->acquire_image(image, {splash_width, splash_height, vk::Format::eR8G8B8A8Srgb});
+                image = s.vulkan->acquire_image({splash_width, splash_height, vk::Format::eR8G8B8A8Srgb});
         } 
         catch (std::exception& e) { log_and_exit_uv(e); return; }
         const char* source = splash_data;
@@ -528,8 +527,7 @@ void draw_splashscreen(state_vulkan_sdl2& s) {
                 dest += padding;
         }
         try {
-                bool discardable;
-                s.vulkan->queue_image(image, true, discardable);
+                s.vulkan->queue_image(image, true);
                 s.vulkan->display_queued_image();
         } 
         catch (std::exception& e) { log_and_exit_uv(e); }
@@ -817,7 +815,7 @@ video_frame* display_sdl2_getf(void* state) {
         const auto& desc = s->current_desc;
         vulkan_display::image image;
         try {
-                s->vulkan->acquire_image(image, to_vkd_image_desc(desc));
+                image = s->vulkan->acquire_image(to_vkd_image_desc(desc));
         } 
         catch (std::exception& e) { log_and_exit_uv(e); return nullptr; }
         assert(image.get_id() < max_frame_count);
@@ -840,8 +838,7 @@ int display_sdl2_putf(void* state, video_frame* frame, long long timeout_ns) {
 
         if (!frame) {
                 s->should_exit = true;
-                bool discarded;
-                s->vulkan->queue_image(vkd::image{}, true, discarded);
+                s->vulkan->queue_image(vkd::image{}, true);
                 return 0;
         }
 
@@ -866,9 +863,7 @@ int display_sdl2_putf(void* state, video_frame* frame, long long timeout_ns) {
         }
         
         try {
-                bool discarded;
-                s->vulkan->queue_image(s->images[id], timeout_ns != PUTF_BLOCKING, discarded);
-                return discarded;
+                return s->vulkan->queue_image(s->images[id], timeout_ns != PUTF_BLOCKING);
         } 
         catch (std::exception& e) { log_and_exit_uv(e); return 1; }
         return 0;
@@ -884,15 +879,13 @@ int display_sdl2_get_property(void* state, int property, void* val, size_t* len)
                         std::vector<codec_t> codecs{};
                         codecs.reserve(mapping.size());
                         for (auto& pair : mapping) {
-                                bool format_supported = false;
                                 try {
-                                        s->vulkan->is_image_description_supported(format_supported,
-                                                {1920, 1080, pair.second });
+                                        bool format_supported = s->vulkan->is_image_description_supported({1920, 1080, pair.second });
+                                        if (format_supported) {
+                                                codecs.push_back(pair.first);
+                                        }
                                 }
                                 catch (std::exception& e) { log_and_exit_uv(e); return FALSE; }
-                                if (format_supported) {
-                                        codecs.push_back(pair.first);
-                                }
                         }
                         LOG(LOG_LEVEL_INFO) << MOD_NAME "Supported codecs are: ";
                         for (auto codec : codecs) {
@@ -917,7 +910,7 @@ int display_sdl2_get_property(void* state, int property, void* val, size_t* len)
                         const auto& desc = s->current_desc;
                         assert(s->current_desc.width != 0);
                         try {
-                                s->vulkan->acquire_image(image, to_vkd_image_desc(desc));
+                                image = s->vulkan->acquire_image(to_vkd_image_desc(desc));
                                 auto value = static_cast<int>(image.get_row_pitch());
                                 if (vkd::is_compressed_format(image.get_description().format)){
                                         value /= 4;

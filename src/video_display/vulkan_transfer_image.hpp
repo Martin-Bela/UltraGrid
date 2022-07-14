@@ -94,10 +94,9 @@ public:
 
         const vulkan_display::image_description& get_description() { return description; }
         uint32_t get_id() { return id; }
-
-        static void is_image_description_supported(bool& supported, vk::PhysicalDevice gpu,
-                vulkan_display::image_description description);
         
+        static bool is_image_description_supported(vk::PhysicalDevice gpu, vulkan_display::image_description description);
+
         void init(vk::Device device, uint32_t id);
 
         void create(vk::Device device, vk::PhysicalDevice gpu, vulkan_display::image_description description);

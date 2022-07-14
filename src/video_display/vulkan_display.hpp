@@ -139,17 +139,11 @@ private:
 
         void create_texture_sampler(vk::Format format);
 
-        void create_render_pass();
-
         void create_descriptor_set_layout();
 
         void create_pipeline_layout();
 
         void create_graphics_pipeline();
-
-        void create_command_pool();
-
-        void create_command_buffers();
 
         void create_transfer_image(transfer_image*& result, image_description description);
 
@@ -184,13 +178,16 @@ public:
         void destroy();
 
         /** Thread-safe */
-        void is_image_description_supported(bool& supported, image_description description);
+        bool is_image_description_supported(image_description description);
 
         /** Thread-safe to call from provider thread.*/
-        void acquire_image(image& image, image_description description);
+        image acquire_image(image_description description);
 
-        /** Thread-safe to call from provider thread.*/
-        void queue_image(image img, bool discardable, bool& discarded);
+        /** Thread-safe to call from provider thread.
+         **
+         ** @return true if image was discarded
+         */
+        bool queue_image(image img, bool discardable);
 
         /** Thread-safe to call from provider thread.*/
         void copy_and_queue_image(std::byte* frame, image_description description);
@@ -200,11 +197,13 @@ public:
                 auto* ptr = image.get_transfer_image();
                 assert(ptr);
                 available_images.push_back(ptr);
-                return void();
         }
 
-        /** Thread-safe to call from render thread.*/
-        void display_queued_image(bool* displayed = nullptr);
+        /** Thread-safe to call from render thread.
+         **
+         ** @return true if image was displayed
+         */
+        bool display_queued_image();
 
         /** Thread-safe*/
         uint32_t get_vulkan_version() const { return context.get_vulkan_version(); }
@@ -222,7 +221,6 @@ public:
         /** Thread-safe */
         void window_parameters_changed() {
                 window_parameters_changed(window->get_window_parameters());
-                return void();
         }
 };
 
