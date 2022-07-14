@@ -81,7 +81,7 @@ void get_memory_type(
                 memory_type = possible_memory_type;
                 return void();
         }
-        VKD_CHECK(false, "No available memory for transfer images found.");
+        throw vulkan_display_exception{"No available memory for transfer images found."};
         return void();
 }
 
@@ -104,11 +104,16 @@ void transfer_image::is_image_description_supported(bool& supported, vk::Physica
                 image_usage_flags,
                 image_create_flags,
                 &properties);
-        if (result == vk::Result::eErrorFormatNotSupported) {
-                supported = false;
-                return void();
+        switch (result){
+                case vk::Result::eSuccess:
+                        break;
+                case vk::Result::eErrorFormatNotSupported:
+                        supported = false;
+                        return void();
+                default:
+                        throw vulkan_display_exception{"Error queriing image properties."};
         }
-        VKD_CHECK(result, "Error queriing image properties:")
+
         supported = description.size.height <= properties.maxExtent.height
                 && description.size.width <= properties.maxExtent.width;
         return void();
@@ -161,7 +166,9 @@ void transfer_image::create(vk::Device device, vk::PhysicalDevice gpu,
         device.bindImageMemory(image, memory, 0);
 
         void* void_ptr = device.mapMemory(memory, 0, memory_requirements.size);
-        VKD_CHECK(void_ptr != nullptr, "Image memory cannot be mapped.");
+        if (void_ptr == nullptr) {
+                throw vulkan_display_exception{"Image memory cannot be mapped."}; 
+        }
         ptr = reinterpret_cast<std::byte*>(void_ptr);
 
         vk::ImageSubresource subresource{ vk::ImageAspectFlagBits::eColor, 0, 0 };
@@ -236,7 +243,9 @@ void transfer_image::preprocess() {
 void transfer_image::destroy(vk::Device device, bool destroy_fence) {
         if (is_available_fence) {
                 auto result = device.waitForFences(is_available_fence, true, UINT64_MAX);
-                VKD_CHECK(result, "Waiting for transfer image fence failed.");
+                if (result != vk::Result::eSuccess) {
+                        throw vulkan_display_exception{"Waiting for transfer image fence failed."}; 
+                }
         }
 
         device.destroy(view);

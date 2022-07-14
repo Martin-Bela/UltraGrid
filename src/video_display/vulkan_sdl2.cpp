@@ -268,36 +268,36 @@ constexpr int64_t translate_sdl_key_to_ug(SDL_Keysym sym) {
                 return ctrl ? K_CTRL(sym.sym) : sym.sym;
         }
         switch (sym.sym) {
-        case SDLK_RIGHT: return K_RIGHT;
-        case SDLK_LEFT:  return K_LEFT;
-        case SDLK_DOWN:  return K_DOWN;
-        case SDLK_UP:    return K_UP;
-        case SDLK_PAGEDOWN:    return K_PGDOWN;
-        case SDLK_PAGEUP:    return K_PGUP;
+                case SDLK_RIGHT: return K_RIGHT;
+                case SDLK_LEFT:  return K_LEFT;
+                case SDLK_DOWN:  return K_DOWN;
+                case SDLK_UP:    return K_UP;
+                case SDLK_PAGEDOWN:    return K_PGDOWN;
+                case SDLK_PAGEUP:    return K_PGUP;
         }
         return -1;
 }
 
 constexpr bool display_sdl2_process_key(state_vulkan_sdl2& s, int64_t key) {
         switch (key) {
-        case 'd':
-                s.deinterlace = !s.deinterlace;
-                log_msg(LOG_LEVEL_INFO, "Deinterlacing: %s\n",
-                        s.deinterlace ? "ON" : "OFF");
-                return true;
-        case 'f': {
-                s.fullscreen = !s.fullscreen;
-                int mouse_x = 0, mouse_y = 0;
-                SDL_GetGlobalMouseState(&mouse_x, &mouse_y);
-                SDL_SetWindowFullscreen(s.window, s.fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
-                SDL_WarpMouseGlobal(mouse_x, mouse_y);
-                return true;
-        }
-        case 'q':
-                exit_uv(0);
-                return true;
-        default:
-                return false;
+                case 'd':
+                        s.deinterlace = !s.deinterlace;
+                        log_msg(LOG_LEVEL_INFO, "Deinterlacing: %s\n",
+                                s.deinterlace ? "ON" : "OFF");
+                        return true;
+                case 'f': {
+                        s.fullscreen = !s.fullscreen;
+                        int mouse_x = 0, mouse_y = 0;
+                        SDL_GetGlobalMouseState(&mouse_x, &mouse_y);
+                        SDL_SetWindowFullscreen(s.window, s.fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+                        SDL_WarpMouseGlobal(mouse_x, mouse_y);
+                        return true;
+                }
+                case 'q':
+                        exit_uv(0);
+                        return true;
+                default:
+                        return false;
         }
 }
 
@@ -879,57 +879,57 @@ int display_sdl2_get_property(void* state, int property, void* val, size_t* len)
         assert(s->mod.priv_magic == magic_vulkan_sdl2);
 
         switch (property) {
-        case DISPLAY_PROPERTY_CODECS: {
-                auto& mapping = codec_to_vulkan_format_mapping;
-                std::vector<codec_t> codecs{};
-                codecs.reserve(mapping.size());
-                for (auto& pair : mapping) {
-                        bool format_supported = false;
-                        try {
-                                s->vulkan->is_image_description_supported(format_supported,
-                                        {1920, 1080, pair.second });
+                case DISPLAY_PROPERTY_CODECS: {
+                        auto& mapping = codec_to_vulkan_format_mapping;
+                        std::vector<codec_t> codecs{};
+                        codecs.reserve(mapping.size());
+                        for (auto& pair : mapping) {
+                                bool format_supported = false;
+                                try {
+                                        s->vulkan->is_image_description_supported(format_supported,
+                                                {1920, 1080, pair.second });
+                                }
+                                catch (std::exception& e) { log_and_exit_uv(e); return FALSE; }
+                                if (format_supported) {
+                                        codecs.push_back(pair.first);
+                                }
                         }
-                        catch (std::exception& e) { log_and_exit_uv(e); return FALSE; }
-                        if (format_supported) {
-                                codecs.push_back(pair.first);
+                        LOG(LOG_LEVEL_INFO) << MOD_NAME "Supported codecs are: ";
+                        for (auto codec : codecs) {
+                                LOG(LOG_LEVEL_INFO) << get_codec_name(codec) << " ";
                         }
+                        LOG(LOG_LEVEL_INFO) << std::endl;
+                        size_t codecs_len = codecs.size() * sizeof(codec_t);
+                        if (codecs_len > *len) {
+                                return FALSE;
+                        }
+                        memcpy(val, codecs.data(), codecs_len);
+                        *len = codecs_len;
+                        break;
                 }
-                LOG(LOG_LEVEL_INFO) << MOD_NAME "Supported codecs are: ";
-                for (auto codec : codecs) {
-                        LOG(LOG_LEVEL_INFO) << get_codec_name(codec) << " ";
-                }
-                LOG(LOG_LEVEL_INFO) << std::endl;
-                size_t codecs_len = codecs.size() * sizeof(codec_t);
-                if (codecs_len > *len) {
-                        return FALSE;
-                }
-                memcpy(val, codecs.data(), codecs_len);
-                *len = codecs_len;
-                break;
-        }
-        case DISPLAY_PROPERTY_BUF_PITCH: {
-                if (sizeof(int) > *len) {
-                        return FALSE;
-                }
-                *len = sizeof(int);
+                case DISPLAY_PROPERTY_BUF_PITCH: {
+                        if (sizeof(int) > *len) {
+                                return FALSE;
+                        }
+                        *len = sizeof(int);
 
-                vkd::image image;
-                const auto& desc = s->current_desc;
-                assert(s->current_desc.width != 0);
-                try {
-                        s->vulkan->acquire_image(image, to_vkd_image_desc(desc));
-                        auto value = static_cast<int>(image.get_row_pitch());
-                        if (vkd::is_compressed_format(image.get_description().format)){
-                                value /= 4;
-                        }
-                        memcpy(val, &value, sizeof(value));
-                        s->vulkan->discard_image(image);
-                } 
-                catch (std::exception& e) { log_and_exit_uv(e); return FALSE; }
-                break;
-        }
-        default:
-                return FALSE;
+                        vkd::image image;
+                        const auto& desc = s->current_desc;
+                        assert(s->current_desc.width != 0);
+                        try {
+                                s->vulkan->acquire_image(image, to_vkd_image_desc(desc));
+                                auto value = static_cast<int>(image.get_row_pitch());
+                                if (vkd::is_compressed_format(image.get_description().format)){
+                                        value /= 4;
+                                }
+                                memcpy(val, &value, sizeof(value));
+                                s->vulkan->discard_image(image);
+                        } 
+                        catch (std::exception& e) { log_and_exit_uv(e); return FALSE; }
+                        break;
+                }
+                default:
+                        return FALSE;
         }
         return TRUE;
 }

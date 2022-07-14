@@ -60,7 +60,9 @@ void check_validation_layers(const std::vector<c_str>& required_layers) {
         for (const auto& req_layer : required_layers) {
                 auto layer_equals = [req_layer](auto layer) { return strcmp(req_layer, layer.layerName) == 0; };
                 bool found = std::any_of(layers.begin(), layers.end(), layer_equals);
-                VKD_CHECK(found, "Layer "s + req_layer + " is not supported.");
+                if (!found) {
+                        throw vulkan_display_exception{"Layer "s + req_layer + " is not supported."}; 
+                }
         }
         return void();
 }
@@ -71,7 +73,9 @@ void check_instance_extensions(const std::vector<c_str>& required_extensions) {
         for (const auto& req_exten : required_extensions) {
                 auto extension_equals = [req_exten](auto exten) { return strcmp(req_exten, exten.extensionName) == 0; };
                 bool found = std::any_of(extensions.begin(), extensions.end(), extension_equals);
-                VKD_CHECK(found, "Instance extension "s + req_exten + " is not supported.");
+                if (!found) {
+                        throw vulkan_display_exception{"Instance extension "s + req_exten + " is not supported."}; 
+                }
         }
         return void();
 }
@@ -88,7 +92,7 @@ void check_device_extensions(bool& result, bool propagate_error,
                 if (!found) {
                         result = false;
                         if (propagate_error) {
-                                VKD_CHECK(false, "Device extension "s + req_exten + " is not supported.");
+                                throw vulkan_display_exception{"Device extension "s + req_exten + " is not supported."}; 
                         }
                         return void();
                 }
@@ -165,12 +169,14 @@ void choose_suitable_GPU(vk::PhysicalDevice& suitable_gpu, const std::vector<vk:
                 }
         }
 
-        VKD_CHECK(false, "No suitable gpu found.");
+        throw vulkan_display_exception{"No suitable gpu found."};
         return void();
 }
 
 void choose_gpu_by_index(vk::PhysicalDevice& gpu, std::vector<vk::PhysicalDevice>& gpus, uint32_t gpu_index) {
-        VKD_CHECK(gpu_index < gpus.size(), "GPU index is not valid.");
+        if (gpu_index >= gpus.size()) {
+                throw vulkan_display_exception{"GPU index is not valid."}; 
+        }
         std::vector<std::pair<std::string, vk::PhysicalDevice>> gpu_names;
         gpu_names.reserve(gpus.size());
 
@@ -223,12 +229,18 @@ void vulkan_instance::init(std::vector<c_str>& required_extensions, bool enable_
                 .setEnabledExtensionCount(static_cast<uint32_t>(required_extensions.size()))
                 .setPpEnabledExtensionNames(required_extensions.data());
         auto result = vk::createInstance(&instance_info, nullptr, &instance);
-        if (result == vk::Result::eErrorIncompatibleDriver) {
-                app_info.apiVersion = VK_API_VERSION_1_0;
-                vulkan_version = VK_API_VERSION_1_0;
-                result = vk::createInstance(&instance_info, nullptr, &instance);
+        
+        switch (result) {
+                case vk::Result::eSuccess:
+                        break;
+                case vk::Result::eErrorIncompatibleDriver:
+                        app_info.apiVersion = VK_API_VERSION_1_0;
+                        vulkan_version = VK_API_VERSION_1_0;
+                        result = vk::createInstance(&instance_info, nullptr, &instance);
+                        break;
+                default:
+                        throw vulkan_display_exception{"Vulkan instance cannot be created: "s + vk::to_string(result)};
         }
-        VKD_CHECK(result, "Vulkan instance cannot be created: "s + vk::to_string(result));
 
         if (enable_validation) {
                 dynamic_dispatcher = std::make_unique<vk::DispatchLoaderDynamic>(instance, vkGetInstanceProcAddr);
@@ -504,15 +516,17 @@ void vulkan_context::acquire_next_swapchain_image(uint32_t& image_index, vk::Sem
         constexpr uint64_t timeout = 1'000'000'000; // 1s = 1 000 000 000 nanoseconds
         auto acquired = device.acquireNextImageKHR(swapchain, timeout, acquire_semaphore, nullptr, &image_index);
         switch (acquired) {
-        case vk::Result::eSuboptimalKHR: [[fallthrough]];
-        case vk::Result::eErrorOutOfDateKHR:
-                image_index = swapchain_image_out_of_date;
-                break;
-        case vk::Result::eTimeout:
-                image_index = swapchain_image_timeout;
-                break;
-        default:
-                VKD_CHECK(acquired, "Next swapchain image cannot be acquired."s + vk::to_string(acquired));
+                case vk::Result::eSuccess:
+                        break;
+                case vk::Result::eSuboptimalKHR: [[fallthrough]];
+                case vk::Result::eErrorOutOfDateKHR:
+                        image_index = swapchain_image_out_of_date;
+                        break;
+                case vk::Result::eTimeout:
+                        image_index = swapchain_image_timeout;
+                        break;
+                default:
+                        throw vulkan_display_exception{"Next swapchain image cannot be acquired."s + vk::to_string(acquired)};
         }
         return void();
 }

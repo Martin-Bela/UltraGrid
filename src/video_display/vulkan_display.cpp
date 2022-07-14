@@ -60,12 +60,17 @@ void create_shader(vk::ShaderModule& shader,
         const vk::Device& device)
 {
         std::ifstream file(file_path, std::ios::binary);
-        VKD_CHECK(file.is_open(), "Failed to open file:"s + file_path.string());
+        if(!file.is_open()){
+                throw vulkan_display_exception{"Failed to open file:"s + file_path.string()};
+        }
         auto size = std::filesystem::file_size(file_path);
         assert(size % 4 == 0);
         std::vector<std::uint32_t> shader_code(size / 4);
         file.read(reinterpret_cast<char*>(shader_code.data()), static_cast<std::streamsize>(size));
-        VKD_CHECK(file.good(), "Error reading from file:"s + file_path.string());
+        
+        if(!file.good()){
+                throw vulkan_display_exception{"Error reading from file:"s + file_path.string()};
+        }
 
         vk::ShaderModuleCreateInfo shader_info;
         shader_info
@@ -328,7 +333,9 @@ void vulkan_display::create_graphics_pipeline() {
                 .setRenderPass(render_pass);
 
         auto result = device.createGraphicsPipelines(nullptr, 1, &pipeline_info, nullptr, &pipeline);
-        VKD_CHECK(result, "Pipeline cannot be created.");       
+        if(result != vk::Result::eSuccess){
+                throw vulkan_display_exception{"Pipeline cannot be created."};
+        }
         return void();
 }
 
@@ -519,7 +526,7 @@ void vulkan_display::acquire_image(image& result, image_description description)
                         if (get_vulkan_version() == VK_API_VERSION_1_0) {
                                 error_msg.append("\nVulkan 1.1 or higher is needed for YCbCr support."sv);
                         }
-                        VKD_CHECK(false, error_msg);
+                        throw vulkan_display_exception{error_msg};
                 }
         }
         transfer_image& transfer_image = acquire_transfer_image(available_images, available_img_queue);
@@ -528,8 +535,9 @@ void vulkan_display::acquire_image(image& result, image_description description)
                 std::unique_lock device_lock(device_mutex, std::defer_lock);
                 if (transfer_image.fence_set) {
                         device_lock.lock();
-                        VKD_CHECK(device.waitForFences(transfer_image.is_available_fence, VK_TRUE, UINT64_MAX),
-                                "Waiting for fence failed.");
+                        if (device.waitForFences(transfer_image.is_available_fence, VK_TRUE, UINT64_MAX) != vk::Result::eSuccess){
+                                throw vulkan_display_exception{"Waiting for fence failed."};
+                        }
                 }
 
                 if (transfer_image.get_description() != description) {
@@ -610,7 +618,9 @@ void vulkan_display::display_queued_image(bool* displayed) {
         while (swapchain_image_id == swapchain_image_out_of_date || swapchain_image_id == swapchain_image_timeout) 
         {
                 swapchain_recreation_attempt++;
-                VKD_CHECK(swapchain_recreation_attempt <= 3, "Cannot acquire swapchain image");
+                if (swapchain_recreation_attempt > 3) {
+                        throw vulkan_display_exception{"Cannot acquire swapchain image"}; 
+                }
                 
                 auto window_parameters = window->get_window_parameters();
                 if (window_parameters.is_minimized()) {
@@ -655,15 +665,18 @@ void vulkan_display::display_queued_image(bool* displayed) {
                 .setPWaitSemaphores(&semaphores.image_rendered);
 
         auto present_result = context.get_queue().presentKHR(&present_info);
-        if (present_result != vk::Result::eSuccess) {
-                using res = vk::Result;
-                switch (present_result) {
+
+        switch (present_result) {
+                case vk::Result::eSuccess:
+                        break;
                 // skip recoverable errors, othervise return/throw error 
-                case res::eErrorOutOfDateKHR: break;
-                case res::eSuboptimalKHR: break;
-                default: VKD_CHECK(false, "Error presenting image:"s + vk::to_string(present_result));
-                }
+                case vk::Result::eErrorOutOfDateKHR: 
+                case vk::Result::eSuboptimalKHR: 
+                        break;  
+                default: 
+                        throw vulkan_display_exception{"Error presenting image:"s + vk::to_string(present_result)};
         }
+        
         if (displayed) {
                 *displayed = true;
         }

@@ -50,36 +50,17 @@ static_assert(VK_HEADER_VERSION > 100); // minimum Vulkan SDK version is 1.1.101
 #undef min
 #undef max
 
+#include <exception>
 #include <functional>
 #include <iostream>
 #include <memory>
 #include <string>
 
 
-namespace vulkan_display_detail {
-
-inline std::function<void(std::string_view)> log_msg;
-
-constexpr inline vk::Result to_vk_result(bool b) {
-        return b ? vk::Result::eSuccess : vk::Result::eErrorFeatureNotPresent;
-}
-
-constexpr inline vk::Result to_vk_result(vk::Result res) {
-        return res;
-}
-
-} // namespace vulkan_display_detail
-
-
-#include<exception>
-
 struct  vulkan_display_exception : public std::runtime_error {
         explicit vulkan_display_exception(const std::string& msg) :
                 std::runtime_error{ msg } { }
 };
-
-#define VKD_CHECK(expr, msg) { if (to_vk_result(expr) != vk::Result::eSuccess) throw vulkan_display_exception{msg}; }
-
 
 namespace vulkan_display {
 
@@ -122,6 +103,8 @@ using namespace std::literals;
 constexpr uint32_t no_queue_index_found = UINT32_MAX;
 constexpr uint32_t swapchain_image_out_of_date = UINT32_MAX;
 constexpr uint32_t swapchain_image_timeout = UINT32_MAX - 1;
+
+inline std::function<void(std::string_view)> log_msg;
 
 class vulkan_context {
         vk::Instance instance;
