@@ -42,11 +42,6 @@
    * @todo
    * Missing from SDL1:
    * * audio (would be perhaps better as an audio playback device)
-   * @todo
-   * * frames are copied, better would be to preallocate textures and set
-   *   video_frame::tiles::data to SDL_LockTexture() pixels. This, however,
-   *   needs decoder to use either pitch (toggling fullscreen or resize) or
-   *   forcing decoder to reconfigure pitch.
    */
 
 #ifdef HAVE_CONFIG_H
@@ -791,8 +786,9 @@ void display_sdl2_done(void* state) {
         delete s;
 }
 
-constexpr std::array<std::pair<codec_t, vk::Format>, 5> codec_to_vulkan_format_mapping {{
+constexpr std::array<std::pair<codec_t, vk::Format>, 6> codec_to_vulkan_format_mapping {{
         {RGBA, vk::Format::eR8G8B8A8Srgb},
+        {RGB, vk::Format::eR8G8B8Srgb},
         {UYVY, vk::Format::eB8G8R8G8422Unorm},
         {YUYV, vk::Format::eG8B8G8R8422Unorm},
         {Y216, vk::Format::eG16B16G16R16422Unorm},
