@@ -80,8 +80,6 @@ struct  vulkan_display_exception : public std::runtime_error {
 
 #define VKD_CHECK(expr, msg) { if (to_vk_result(expr) != vk::Result::eSuccess) throw vulkan_display_exception{msg}; }
 
-#define VKD_CHECKED_ASSIGN(variable, expr) { (variable) = (expr); }
-
 
 namespace vulkan_display {
 

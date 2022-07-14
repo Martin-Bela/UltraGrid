@@ -117,7 +117,7 @@ void transfer_image::is_image_description_supported(bool& supported, vk::Physica
 void transfer_image::init(vk::Device device, uint32_t id) {
         this->id = id;
         vk::FenceCreateInfo fence_info{ vk::FenceCreateFlagBits::eSignaled };
-        VKD_CHECKED_ASSIGN(is_available_fence, device.createFence(fence_info));
+        is_available_fence = device.createFence(fence_info);
         return void();
 }
 
@@ -145,7 +145,7 @@ void transfer_image::create(vk::Device device, vk::PhysicalDevice gpu,
                 .setUsage(image_usage_flags)
                 .setSharingMode(vk::SharingMode::eExclusive)
                 .setSamples(vk::SampleCountFlagBits::e1);
-        VKD_CHECKED_ASSIGN(image, device.createImage(image_info));
+        image = device.createImage(image_info);
 
         vk::MemoryRequirements memory_requirements = device.getImageMemoryRequirements(image);
         vk::DeviceSize byte_size = add_padding(memory_requirements.size, memory_requirements.alignment);
@@ -156,12 +156,11 @@ void transfer_image::create(vk::Device device, vk::PhysicalDevice gpu,
                 mem_bits::eHostVisible | mem_bits::eHostCoherent, mem_bits::eHostCached, gpu);
 
         vk::MemoryAllocateInfo allocInfo{ byte_size , memory_type };
-        VKD_CHECKED_ASSIGN(memory, device.allocateMemory(allocInfo));
+        memory = device.allocateMemory(allocInfo);
 
         device.bindImageMemory(image, memory, 0);
 
-        void* void_ptr = nullptr;
-        VKD_CHECKED_ASSIGN(void_ptr, device.mapMemory(memory, 0, memory_requirements.size));
+        void* void_ptr = device.mapMemory(memory, 0, memory_requirements.size);
         VKD_CHECK(void_ptr != nullptr, "Image memory cannot be mapped.");
         ptr = reinterpret_cast<std::byte*>(void_ptr);
 
@@ -204,7 +203,7 @@ void transfer_image::prepare_for_rendering(vk::Device device,
 
                 vk::SamplerYcbcrConversionInfo yCbCr_info{ conversion };
                 view_info.setPNext(conversion ? &yCbCr_info : nullptr);
-                VKD_CHECKED_ASSIGN(view, device.createImageView(view_info));
+                view = device.createImageView(view_info);
 
                 vk::DescriptorImageInfo description_image_info;
                 description_image_info

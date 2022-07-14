@@ -54,8 +54,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 }
 
 void check_validation_layers(const std::vector<c_str>& required_layers) {
-        std::vector<vk::LayerProperties>  layers;
-        VKD_CHECKED_ASSIGN(layers, vk::enumerateInstanceLayerProperties());
+        std::vector<vk::LayerProperties>  layers = vk::enumerateInstanceLayerProperties();
         //for (auto& l : layers) puts(l.layerName);
 
         for (const auto& req_layer : required_layers) {
@@ -67,8 +66,7 @@ void check_validation_layers(const std::vector<c_str>& required_layers) {
 }
 
 void check_instance_extensions(const std::vector<c_str>& required_extensions) {
-        std::vector<vk::ExtensionProperties> extensions;
-        VKD_CHECKED_ASSIGN(extensions, vk::enumerateInstanceExtensionProperties(nullptr));
+        std::vector<vk::ExtensionProperties> extensions = vk::enumerateInstanceExtensionProperties(nullptr);
 
         for (const auto& req_exten : required_extensions) {
                 auto extension_equals = [req_exten](auto exten) { return strcmp(req_exten, exten.extensionName) == 0; };
@@ -82,8 +80,7 @@ void check_instance_extensions(const std::vector<c_str>& required_extensions) {
 void check_device_extensions(bool& result, bool propagate_error,
         const std::vector<c_str>& required_extensions, const vk::PhysicalDevice& device)
 {
-        std::vector<vk::ExtensionProperties> extensions;
-        VKD_CHECKED_ASSIGN(extensions, device.enumerateDeviceExtensionProperties(nullptr));
+        std::vector<vk::ExtensionProperties> extensions = device.enumerateDeviceExtensionProperties(nullptr);
 
         for (const auto& req_exten : required_extensions) {
                 auto extension_equals = [req_exten](auto exten) { return strcmp(req_exten, exten.extensionName) == 0; };
@@ -109,7 +106,7 @@ void get_queue_family_index(uint32_t& index, vk::PhysicalDevice gpu, vk::Surface
         for (uint32_t i = 0; i < families.size(); i++) {
                 VkBool32 surface_supported = true;
                 if (surface) {
-                        VKD_CHECKED_ASSIGN(surface_supported, gpu.getSurfaceSupportKHR(i, surface));
+                        surface_supported = gpu.getSurfaceSupportKHR(i, surface);
                 }
 
                 if (surface_supported && (families[i].queueFlags & vk::QueueFlagBits::eGraphics)) {
@@ -250,15 +247,14 @@ void vulkan_instance::init_validation_layers_error_messenger() {
                 .setMessageType(type::eGeneral | type::ePerformance | type::eValidation)
                 .setPfnUserCallback(debugCallback)
                 .setPUserData(nullptr);
-        VKD_CHECKED_ASSIGN(messenger, instance.createDebugUtilsMessengerEXT(messenger_info, nullptr, *dynamic_dispatcher));
+        messenger = instance.createDebugUtilsMessengerEXT(messenger_info, nullptr, *dynamic_dispatcher);
         return void();
 }
 
 void vulkan_instance::get_available_gpus(std::vector<std::pair<std::string, bool>>& gpus) {
         assert(instance);
 
-        std::vector<vk::PhysicalDevice> physical_devices;
-        VKD_CHECKED_ASSIGN(physical_devices, instance.enumeratePhysicalDevices());
+        std::vector<vk::PhysicalDevice> physical_devices = instance.enumeratePhysicalDevices();
         gpus.clear();
         gpus.reserve(physical_devices.size());
         for (const auto& gpu : physical_devices) {
@@ -290,8 +286,7 @@ namespace vulkan_display_detail { //--------------------------------------------
 void vulkan_context::create_physical_device(uint32_t gpu_index) {
         assert(instance);
         assert(surface);
-        std::vector<vk::PhysicalDevice> gpus;
-        VKD_CHECKED_ASSIGN(gpus, instance.enumeratePhysicalDevices());
+        std::vector<vk::PhysicalDevice> gpus = instance.enumeratePhysicalDevices();
 
         if (gpu_index == vulkan_display::no_gpu_selected) {
                 choose_suitable_GPU(gpu, gpus, surface);
@@ -347,14 +342,13 @@ void vulkan_context::create_logical_device() {
                 }
         }
 
-        VKD_CHECKED_ASSIGN(device, gpu.createDevice(device_info));
+        device = gpu.createDevice(device_info);
         return void();
 
 }
 
 void vulkan_context::get_present_mode() {
-        std::vector<vk::PresentModeKHR> modes;
-        VKD_CHECKED_ASSIGN(modes, gpu.getSurfacePresentModesKHR(surface));
+        std::vector<vk::PresentModeKHR> modes = gpu.getSurfacePresentModesKHR(surface);
 
         vk::PresentModeKHR preferred = preferred_present_mode;
         if (std::any_of(modes.begin(), modes.end(), [preferred](auto mode) { return mode == preferred; })) {
@@ -377,8 +371,7 @@ void vulkan_context::get_present_mode() {
 }
 
 void vulkan_context::get_surface_format() {
-        std::vector<vk::SurfaceFormatKHR> formats;
-        VKD_CHECKED_ASSIGN(formats, gpu.getSurfaceFormatsKHR(surface));
+        std::vector<vk::SurfaceFormatKHR> formats = gpu.getSurfaceFormatsKHR(surface);
 
         vk::SurfaceFormatKHR default_format{};
         default_format.format = vk::Format::eB8G8R8A8Srgb;
@@ -394,7 +387,7 @@ void vulkan_context::get_surface_format() {
 
 void vulkan_context::create_swap_chain(vk::SwapchainKHR old_swapchain) {
         auto& capabilities = swapchain_atributes.capabilities;
-        VKD_CHECKED_ASSIGN(capabilities, gpu.getSurfaceCapabilitiesKHR(surface));
+        capabilities = gpu.getSurfaceCapabilitiesKHR(surface);
 
         get_present_mode();
         get_surface_format();
@@ -427,13 +420,12 @@ void vulkan_context::create_swap_chain(vk::SwapchainKHR old_swapchain) {
                 .setCompositeAlpha(get_composite_alpha(swapchain_atributes.capabilities.supportedCompositeAlpha))
                 .setClipped(true)
                 .setOldSwapchain(old_swapchain);
-        VKD_CHECKED_ASSIGN(swapchain, device.createSwapchainKHR(swapchain_info));
+        swapchain = device.createSwapchainKHR(swapchain_info);
         return void();
 }
 
 void vulkan_context::create_swapchain_views() {
-        std::vector<vk::Image> images;
-        VKD_CHECKED_ASSIGN(images, device.getSwapchainImagesKHR(swapchain));
+        std::vector<vk::Image> images = device.getSwapchainImagesKHR(swapchain);
         auto image_count = static_cast<uint32_t>(images.size());
 
         vk::ImageViewCreateInfo image_view_info = 
@@ -445,7 +437,7 @@ void vulkan_context::create_swapchain_views() {
                 swapchain_image.image = images[i];
 
                 image_view_info.setImage(swapchain_image.image);
-                VKD_CHECKED_ASSIGN(swapchain_image.view, device.createImageView(image_view_info));
+                swapchain_image.view = device.createImageView(image_view_info);
         }
         return void();
 }
@@ -486,7 +478,7 @@ void vulkan_context::create_framebuffers(vk::RenderPass render_pass) {
                 framebuffer_info
                         .setAttachmentCount(1)
                         .setPAttachments(&swapchain_image.view);
-                VKD_CHECKED_ASSIGN(swapchain_image.framebuffer, device.createFramebuffer(framebuffer_info));
+                swapchain_image.framebuffer = device.createFramebuffer(framebuffer_info);
         }
         return void();
 }

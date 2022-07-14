@@ -71,7 +71,7 @@ void create_shader(vk::ShaderModule& shader,
         shader_info
                 .setCodeSize(shader_code.size() * 4)
                 .setPCode(shader_code.data());
-        VKD_CHECKED_ASSIGN(shader, device.createShaderModule(shader_info));
+        shader = device.createShaderModule(shader_info);
         return void();
 }
 
@@ -160,7 +160,7 @@ void vulkan_display::create_texture_sampler(vk::Format format) {
                         .setXChromaOffset(vk::ChromaLocation::eMidpoint)
                         .setYChromaOffset(vk::ChromaLocation::eMidpoint)
                         .setForceExplicitReconstruction(false);
-                VKD_CHECKED_ASSIGN(yCbCr_conversion, device.createSamplerYcbcrConversion(conversion_info));
+                yCbCr_conversion = device.createSamplerYcbcrConversion(conversion_info);
         }
 
         vk::SamplerYcbcrConversionInfo yCbCr_info{ yCbCr_conversion };
@@ -175,7 +175,7 @@ void vulkan_display::create_texture_sampler(vk::Format format) {
                 .setAnisotropyEnable(false)
                 .setUnnormalizedCoordinates(false)
                 .setPNext(yCbCr_conversion ? &yCbCr_info : nullptr);
-        VKD_CHECKED_ASSIGN(sampler, device.createSampler(sampler_info));
+        sampler = device.createSampler(sampler_info);
         return void();
 }
 
@@ -220,7 +220,7 @@ void vulkan_display::create_render_pass() {
                 .setDependencyCount(1)
                 .setPDependencies(&subpass_dependency);
 
-        VKD_CHECKED_ASSIGN(render_pass, device.createRenderPass(render_pass_info));
+        render_pass = device.createRenderPass(render_pass_info);
 
         vk::ClearColorValue clear_color_value{};
         clear_color_value.setFloat32({ 0.01f, 0.01f, 0.01f, 1.0f });
@@ -244,8 +244,7 @@ void vulkan_display::create_descriptor_set_layout() {
                 .setBindingCount(1)
                 .setPBindings(&descriptor_set_layout_bindings);
 
-        VKD_CHECKED_ASSIGN(descriptor_set_layout,
-                device.createDescriptorSetLayout(descriptor_set_layout_info));
+        descriptor_set_layout = device.createDescriptorSetLayout(descriptor_set_layout_info);
         return void();
 }
 
@@ -264,7 +263,7 @@ void vulkan_display::create_graphics_pipeline() {
                 .setPPushConstantRanges(&push_constants)
                 .setSetLayoutCount(1)
                 .setPSetLayouts(&descriptor_set_layout);
-        VKD_CHECKED_ASSIGN(pipeline_layout, device.createPipelineLayout(pipeline_layout_info));
+        pipeline_layout = device.createPipelineLayout(pipeline_layout_info);
 
         vk::GraphicsPipelineCreateInfo pipeline_info{};
 
@@ -340,8 +339,8 @@ void vulkan_display::create_image_semaphores()
         image_semaphores.resize(transfer_image_count);
 
         for (auto& image_semaphores : image_semaphores) {
-                VKD_CHECKED_ASSIGN(image_semaphores.image_acquired, device.createSemaphore(semaphore_info));
-                VKD_CHECKED_ASSIGN(image_semaphores.image_rendered, device.createSemaphore(semaphore_info));
+                image_semaphores.image_acquired = device.createSemaphore(semaphore_info);
+                image_semaphores.image_rendered = device.createSemaphore(semaphore_info);
         }
 
         return void();
@@ -353,7 +352,7 @@ void vulkan_display::create_command_pool() {
         pool_info
                 .setQueueFamilyIndex(context.get_queue_familt_index())
                 .setFlags(bits::eTransient | bits::eResetCommandBuffer);
-        VKD_CHECKED_ASSIGN(command_pool, device.createCommandPool(pool_info));
+        command_pool = device.createCommandPool(pool_info);
         return void();
 }
 
@@ -363,7 +362,7 @@ void vulkan_display::create_command_buffers() {
                 .setCommandPool(command_pool)
                 .setLevel(vk::CommandBufferLevel::ePrimary)
                 .setCommandBufferCount(static_cast<uint32_t>(transfer_image_count));
-        VKD_CHECKED_ASSIGN(command_buffers, device.allocateCommandBuffers(allocate_info));
+        command_buffers = device.allocateCommandBuffers(allocate_info);
         return void();
 }
 
@@ -381,7 +380,7 @@ void vulkan_display::allocate_description_sets() {
                 .setPoolSizeCount(1)
                 .setPPoolSizes(&descriptor_sizes)
                 .setMaxSets(transfer_image_count);
-        VKD_CHECKED_ASSIGN(descriptor_pool, device.createDescriptorPool(pool_info));
+        descriptor_pool = device.createDescriptorPool(pool_info);
 
         std::vector<vk::DescriptorSetLayout> layouts(transfer_image_count, descriptor_set_layout);
 
@@ -391,7 +390,7 @@ void vulkan_display::allocate_description_sets() {
                 .setDescriptorSetCount(static_cast<uint32_t>(layouts.size()))
                 .setPSetLayouts(layouts.data());
 
-        VKD_CHECKED_ASSIGN(descriptor_sets, device.allocateDescriptorSets(allocate_info));
+        descriptor_sets = device.allocateDescriptorSets(allocate_info);
 
         return void();
 }
