@@ -512,23 +512,12 @@ image vulkan_display::acquire_image(image_description description) {
         }
         transfer_image& transfer_image = acquire_transfer_image(available_images, available_img_queue);
         assert(transfer_image.get_id() != transfer_image::NO_ID);
-        {
-                std::unique_lock device_lock(device_mutex, std::defer_lock);
-                if (transfer_image.fence_set) {
-                        device_lock.lock();
-                        if (device.waitForFences(transfer_image.is_available_fence, VK_TRUE, UINT64_MAX) != vk::Result::eSuccess){
-                                throw vulkan_display_exception{"Waiting for fence failed."};
-                        }
-                }
 
-                if (transfer_image.get_description() != description) {
-                        if (!device_lock.owns_lock()) {
-                                device_lock.lock();
-                        }
-                        //todo another formats
-                        transfer_image.create(device, context.get_gpu(), description);
-                }
+        if (transfer_image.get_description() != description) {
+                std::unique_lock device_lock(device_mutex);
+                transfer_image.create(device, context.get_gpu(), description);
         }
+        
         return image{ transfer_image };
 }
 
@@ -555,6 +544,20 @@ bool vulkan_display::display_queued_image() {
         if (window_parameters.is_minimized()) {
                 discard_filled_image(filled_img_queue, available_img_queue);
                 return false;
+        }
+
+        while (!rendered_images.empty()){
+                auto result = device.waitForFences(rendered_images.front()->is_available_fence, VK_TRUE, 0);
+                if (result == vk::Result::eSuccess){
+                        available_img_queue.wait_enqueue(rendered_images.front());
+                        rendered_images.pop();
+                }
+                else if (result == vk::Result::eTimeout){
+                        break;
+                }
+                else {
+                        throw vulkan_display_exception{"Waiting for fence failed."};
+                }
         }
 
         transfer_image* transfer_image_ptr = nullptr;
@@ -649,7 +652,7 @@ bool vulkan_display::display_queued_image() {
                         throw vulkan_display_exception{"Error presenting image:"s + vk::to_string(present_result)};
         }
         
-        available_img_queue.wait_enqueue(&transfer_image);
+        rendered_images.push(&transfer_image);
         return true;
 }
 

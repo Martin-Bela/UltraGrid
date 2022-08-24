@@ -42,6 +42,7 @@
 #include "vulkan_transfer_image.hpp"
 
 
+#include <queue>
 #include <mutex>
 #include <filesystem>
 #include <utility>
@@ -132,6 +133,8 @@ class vulkan_display {
         detail::concurrent_queue<transfer_image*> filled_img_queue{8};
         /// local to provider thread
         std::vector<transfer_image*> available_images;
+
+        std::queue<transfer_image*> rendered_images;
 
         bool minimalised = false;
         bool destroyed = false;
