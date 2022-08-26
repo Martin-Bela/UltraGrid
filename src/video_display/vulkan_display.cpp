@@ -131,13 +131,13 @@ vk::PresentModeKHR get_present_mode(bool vsync_enabled, bool tearing_permitted){
         return tearing_permitted ? e::eImmediate : e::eMailbox;
 }
 
-void discard_filled_image(concurrent_queue<transfer_image*>& filled_img_queue, 
+void discard_filled_image(concurrent_circular_buffer<transfer_image*>& filled_img_queue, 
         concurrent_queue<transfer_image*>& available_img_queue)
 {
         transfer_image* transfer_image = nullptr;
         bool dequeued = filled_img_queue.try_dequeue(transfer_image);
         if (dequeued && transfer_image) {
-                available_img_queue.wait_enqueue(transfer_image);
+                available_img_queue.enqueue(transfer_image);
         }
 }
 
@@ -378,12 +378,11 @@ vk::Pipeline create_graphics_pipeline(vk::Device device, vk::PipelineLayout pipe
 
 namespace vulkan_display {
 
-void vulkan_display::init(vulkan_instance&& instance, VkSurfaceKHR surface, uint32_t transfer_image_count,
+void vulkan_display::init(vulkan_instance&& instance, VkSurfaceKHR surface, uint32_t initial_image_count,
         window_changed_callback& window, uint32_t gpu_index, std::filesystem::path path_to_shaders, bool vsync, bool tearing_permitted) {
         // Order of following calls is important
         assert(surface);
         this->window = &window;
-        this->transfer_image_count = transfer_image_count;
         auto window_parameters = window.get_window_parameters();
         
         context.init(std::move(instance), surface, window_parameters, gpu_index, get_present_mode(vsync, tearing_permitted));
@@ -401,13 +400,8 @@ void vulkan_display::init(vulkan_instance&& instance, VkSurfaceKHR surface, uint
 
         context.create_framebuffers(render_pass);
 
-        if (transfer_image_count > 8){
-                available_img_queue = concurrent_queue<transfer_image*>{transfer_image_count};
-        }
-
-        transfer_images.reserve(transfer_image_count);
-        available_images.reserve(transfer_image_count);
-        for (uint32_t i = 0; i < transfer_image_count; i++) {
+        available_images.reserve(initial_image_count);
+        for (uint32_t i = 0; i < initial_image_count; i++) {
                 transfer_images.emplace_back(device, i);
                 available_images.push_back(&transfer_images.back());
         }
@@ -536,16 +530,28 @@ void vulkan_display::copy_and_queue_image(std::byte* frame, image_description de
         queue_image(image, false);
 }
 
-bool vulkan_display::queue_image(image image, bool discardable) {
+bool vulkan_display::queue_image(image image, bool discardable) {   
         // if image is discardable and the filled_img_queue is full
-        if (discardable && filled_img_queue.size_approx() > filled_img_max_count){
+        if(!discardable){
+                filled_img_queue.wait_enqueue(image.get_transfer_image());
+                return false;
+        }
+
+        if (filled_img_queue.wait_enqueue_timed(image.get_transfer_image(), 1ms)){
+                return true;
+        }
+
+        available_images.push_back(image.get_transfer_image());
+        return true;
+        
+        /*if (discardable && filled_img_queue.size_approx() > filled_img_max_count){
                 available_images.push_back(image.get_transfer_image());
                 return true;
         }
         else{
                 filled_img_queue.wait_enqueue(image.get_transfer_image());
                 return false;
-        }
+        }*/
 }
 
 bool vulkan_display::display_queued_image() {
@@ -564,7 +570,7 @@ bool vulkan_display::display_queued_image() {
                                 device.resetFences(first_image->is_available_fence);
                                 free_gpu_commands.push_back(rendered_images.front().gpu_commands);
                                 rendered_images.pop();
-                                available_img_queue.wait_enqueue(first_image);
+                                available_img_queue.enqueue(first_image);
                         }
                         else if (result == vk::Result::eTimeout){
                                 break;

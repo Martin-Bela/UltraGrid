@@ -69,13 +69,13 @@ class image;
 namespace vulkan_display_detail {
 
 class transfer_image {
-        vk::DeviceMemory memory;
-        vk::Image image;
+        vk::DeviceMemory memory{};
+        vk::Image image{};
         vk::ImageLayout layout{};
         vk::AccessFlags access;
 
         uint32_t id = NO_ID;
-        vk::ImageView view;
+        vk::ImageView view{};
         std::byte* ptr = nullptr;
         vulkan_display::image_description description;
 

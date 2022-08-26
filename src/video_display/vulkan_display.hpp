@@ -38,6 +38,8 @@
 #pragma once
 
 #include "ext-deps/readerwriterqueue/readerwritercircularbuffer.h"
+#include "ext-deps/readerwriterqueue/readerwriterqueue.h"
+
 #include "vulkan_context.hpp"
 #include "vulkan_transfer_image.hpp"
 
@@ -54,7 +56,10 @@ constexpr static unsigned filled_img_max_count = 1;
 constexpr auto waiting_time_for_filled_image = 50ms;
 
 template<typename T>
-using concurrent_queue = moodycamel::BlockingReaderWriterCircularBuffer<T>;
+using concurrent_circular_buffer = moodycamel::BlockingReaderWriterCircularBuffer<T>;
+
+template<typename T>
+using concurrent_queue = moodycamel::BlockingReaderWriterQueue<T>;
 
 struct render_area {
         uint32_t x;
@@ -124,14 +129,13 @@ class vulkan_display {
 
         image_description current_image_description;
 
-        unsigned transfer_image_count = 0;
         using transfer_image = detail::transfer_image;
-        std::vector<transfer_image> transfer_images{};
+        std::deque<transfer_image> transfer_images{};
 
         /// available_img_queue - producer is the render thread, consumer is the provided thread
         detail::concurrent_queue<transfer_image*> available_img_queue{8};
         /// filled_img_queue - producer is the provider thread, consumer is the render thread
-        detail::concurrent_queue<transfer_image*> filled_img_queue{8};
+        detail::concurrent_circular_buffer<transfer_image*> filled_img_queue{1};
         /// local to provider thread
         std::vector<transfer_image*> available_images;
 

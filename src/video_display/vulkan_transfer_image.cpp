@@ -193,7 +193,6 @@ void transfer_image::prepare_for_rendering(vk::Device device,
         vk::DescriptorSet descriptor_set, vk::Sampler sampler, vk::SamplerYcbcrConversion conversion) 
 {
         if (!view) {
-                device.destroy(view);
                 vk::ImageViewCreateInfo view_info = 
                         vkd::default_image_view_create_info(description.format);
                 view_info.setImage(image);
