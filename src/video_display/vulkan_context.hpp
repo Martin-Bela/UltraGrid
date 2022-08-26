@@ -147,6 +147,7 @@ public:
         vk::SwapchainKHR get_swapchain() { return swapchain; }
         vk::Format get_swapchain_image_format() { return swapchain_atributes.format.format; };
         vk::Extent2D get_window_size() { return window_size; }
+        size_t get_swapchain_image_count(){ return swapchain_images.size(); }
 private:
         void create_physical_device(uint32_t gpu_index);
 

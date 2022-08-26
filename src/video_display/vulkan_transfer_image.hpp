@@ -89,8 +89,7 @@ public:
 
         static constexpr uint32_t NO_ID = UINT32_MAX;
 
-        bool fence_set = false;       // true if waiting for is_available_fence is neccessary
-        vk::Fence is_available_fence; // is_available_fence isn't signalled when gpu uses the image
+        vk::Fence is_available_fence; // is_available_fence becames signalled when gpu releases the image
 
         const vulkan_display::image_description& get_description() { return description; }
         uint32_t get_id() { return id; }

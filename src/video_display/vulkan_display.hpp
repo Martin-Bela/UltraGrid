@@ -42,6 +42,7 @@
 #include "vulkan_transfer_image.hpp"
 
 
+#include <deque>
 #include <queue>
 #include <mutex>
 #include <filesystem>
@@ -61,6 +62,14 @@ struct render_area {
         uint32_t width;
         uint32_t height;
 };
+
+struct gpu_commands {
+        vk::CommandBuffer command_buffer;
+        vk::Semaphore image_acquired;
+        vk::Semaphore image_rendered;
+        vk::DescriptorSet descriptor_set;
+};
+
 
 } // vulkan_display_detail
 
@@ -105,23 +114,15 @@ class vulkan_display {
         vk::Sampler sampler{};
 
         vk::DescriptorSetLayout descriptor_set_layout;
-        vk::DescriptorPool descriptor_pool;
-        std::vector<vk::DescriptorSet> descriptor_sets{};
-
         vk::PipelineLayout pipeline_layout;
         vk::Pipeline pipeline;
 
+        vk::DescriptorPool descriptor_pool;
         vk::CommandPool command_pool;
-        std::vector<vk::CommandBuffer> command_buffers{};
+        std::array<detail::gpu_commands, 3> gpu_commands;
+        std::vector<detail::gpu_commands*> free_gpu_commands;
 
         image_description current_image_description;
-
-        struct image_semaphores {
-                vk::Semaphore image_acquired;
-                vk::Semaphore image_rendered;
-        };
-        std::vector<image_semaphores> image_semaphores;
-
 
         unsigned transfer_image_count = 0;
         using transfer_image = detail::transfer_image;
@@ -134,27 +135,18 @@ class vulkan_display {
         /// local to provider thread
         std::vector<transfer_image*> available_images;
 
-        std::queue<transfer_image*> rendered_images;
+        struct rendered_image{
+                transfer_image* image;
+                detail::gpu_commands* gpu_commands;
+        };
+        std::queue<rendered_image> rendered_images;
 
         bool minimalised = false;
         bool destroyed = false;
 private:
+        //void create_transfer_image(transfer_image*& result, image_description description);
 
-        void create_texture_sampler(vk::Format format);
-
-        void create_descriptor_set_layout();
-
-        void create_pipeline_layout();
-
-        void create_graphics_pipeline();
-
-        void create_transfer_image(transfer_image*& result, image_description description);
-
-        void create_image_semaphores();
-
-        void allocate_description_sets();
-
-        void record_graphics_commands(transfer_image& transfer_image, uint32_t swapchain_image_id);
+        void record_graphics_commands(detail::gpu_commands& commands, transfer_image& transfer_image, uint32_t swapchain_image_id);
 
 public:
         /// TERMINOLOGY:

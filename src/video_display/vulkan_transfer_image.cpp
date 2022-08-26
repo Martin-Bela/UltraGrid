@@ -114,7 +114,7 @@ bool transfer_image::is_image_description_supported(vk::PhysicalDevice gpu, vkd:
 
 void transfer_image::init(vk::Device device, uint32_t id) {
         this->id = id;
-        vk::FenceCreateInfo fence_info{ vk::FenceCreateFlagBits::eSignaled };
+        vk::FenceCreateInfo fence_info{};
         is_available_fence = device.createFence(fence_info);
 }
 
@@ -201,24 +201,23 @@ void transfer_image::prepare_for_rendering(vk::Device device,
                 vk::SamplerYcbcrConversionInfo yCbCr_info{ conversion };
                 view_info.setPNext(conversion ? &yCbCr_info : nullptr);
                 view = device.createImageView(view_info);
-
-                vk::DescriptorImageInfo description_image_info;
-                description_image_info
-                        .setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal)
-                        .setSampler(sampler)
-                        .setImageView(view);
-
-                vk::WriteDescriptorSet descriptor_writes{};
-                descriptor_writes
-                        .setDstBinding(1)
-                        .setDstArrayElement(0)
-                        .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
-                        .setPImageInfo(&description_image_info)
-                        .setDescriptorCount(1)
-                        .setDstSet(descriptor_set);
-
-                device.updateDescriptorSets(descriptor_writes, nullptr);
         }
+        vk::DescriptorImageInfo description_image_info;
+        description_image_info
+                .setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal)
+                .setSampler(sampler)
+                .setImageView(view);
+
+        vk::WriteDescriptorSet descriptor_writes{};
+        descriptor_writes
+                .setDstBinding(1)
+                .setDstArrayElement(0)
+                .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
+                .setPImageInfo(&description_image_info)
+                .setDescriptorCount(1)
+                .setDstSet(descriptor_set);
+
+        device.updateDescriptorSets(descriptor_writes, nullptr);
 }
 
 void transfer_image::preprocess() {
@@ -230,13 +229,6 @@ void transfer_image::preprocess() {
 }
 
 void transfer_image::destroy(vk::Device device, bool destroy_fence) {
-        if (is_available_fence) {
-                auto result = device.waitForFences(is_available_fence, true, UINT64_MAX);
-                if (result != vk::Result::eSuccess) {
-                        throw vulkan_display_exception{"Waiting for transfer image fence failed."}; 
-                }
-        }
-
         device.destroy(view);
         device.destroy(image);
 
