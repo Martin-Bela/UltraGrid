@@ -42,7 +42,7 @@
 namespace vulkan_display {
 
 struct image_description {
-        vk::Extent2D size;
+        vk::Extent2D size{};
         vk::Format format{};
 
         image_description() = default;
@@ -68,16 +68,36 @@ class image;
 
 namespace vulkan_display_detail {
 
-class transfer_image {
+class image2D{
+public:
         vk::DeviceMemory memory{};
         vk::Image image{};
         vk::ImageLayout layout{};
-        vk::AccessFlags access;
+        vk::AccessFlags access{};
 
-        uint32_t id = NO_ID;
         vk::ImageView view{};
+
+        size_t byte_size{};
+
+        vk::Extent2D size{};
+        vk::Format format{};
+public:
+        void init(vulkan_context& context,
+                vulkan_display::image_description description, vk::ImageUsageFlags usage, 
+                vk::AccessFlags initial_access, bool preinitialised,
+                vk::MemoryPropertyFlags requested_properties, vk::MemoryPropertyFlags optional_properties);
+
+        void create_view(vk::Device device, vk::SamplerYcbcrConversion conversion);
+        
+        void destroy(vk::Device device);
+public:
+        vulkan_display::image_description get_description() { return {size, format}; }
+};
+
+class transfer_image {
+        image2D image2D;
+        uint32_t id = NO_ID;
         std::byte* ptr = nullptr;
-        vulkan_display::image_description description;
 
         vk::DeviceSize row_pitch = 0;
 
@@ -91,14 +111,15 @@ public:
 
         vk::Fence is_available_fence; // is_available_fence becames signalled when gpu releases the image
 
-        const vulkan_display::image_description& get_description() { return description; }
         uint32_t get_id() { return id; }
         
         static bool is_image_description_supported(vk::PhysicalDevice gpu, vulkan_display::image_description description);
 
         void init(vk::Device device, uint32_t id);
 
-        void create(vk::Device device, vk::PhysicalDevice gpu, vulkan_display::image_description description);
+        void recreate(vulkan_context& context, vulkan_display::image_description description);
+
+        vulkan_display::image_description get_description(){ return image2D.get_description(); }
 
         vk::ImageMemoryBarrier create_memory_barrier(
                 vk::ImageLayout new_layout,
@@ -111,7 +132,7 @@ public:
 
         void preprocess();
 
-        void destroy(vk::Device device, bool destroy_fence = true);
+        void destroy(vk::Device device);
 
         transfer_image() = default;
         transfer_image(vk::Device device, uint32_t id) {
@@ -131,7 +152,7 @@ class image {
         detail::transfer_image* transfer_image = nullptr;
 public:
         image() = default;
-        image(std::nullptr_t){};
+        image(std::nullptr_t){}
 
         explicit image(detail::transfer_image& image) :
                 transfer_image{ &image }
@@ -151,7 +172,7 @@ public:
 
         image_description get_description() {
                 assert(transfer_image);
-                return transfer_image->description;
+                return transfer_image->image2D.get_description();
         }
 
         vk::DeviceSize get_row_pitch() {
@@ -160,7 +181,7 @@ public:
         }
 
         vk::Extent2D get_size() {
-                return transfer_image->description.size;
+                return transfer_image->image2D.size;
         }
 
         vulkan_display_detail::transfer_image* get_transfer_image() {

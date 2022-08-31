@@ -118,18 +118,18 @@ void transfer_image::init(vk::Device device, uint32_t id) {
         is_available_fence = device.createFence(fence_info);
 }
 
-void transfer_image::create(vk::Device device, vk::PhysicalDevice gpu,
-        vkd::image_description description)
+void image2D::init(vulkan_context& context, vkd::image_description description, vk::ImageUsageFlags usage, 
+        vk::AccessFlags initial_access, bool preinitialised,
+        vk::MemoryPropertyFlags requested_properties, vk::MemoryPropertyFlags optional_properties)
 {
-        assert(id != NO_ID);
-        destroy(device, false);
-        
+        this->format = description.format;
+        this->size = description.size;
+        this->access = initial_access;
+        this->layout = preinitialised ? vk::ImageLayout::ePreinitialized : vk::ImageLayout::eUndefined;
         this->view = nullptr;
-        this->description = description;
-        this->layout = vk::ImageLayout::ePreinitialized;
-        this->access = vk::AccessFlagBits::eHostWrite | vk::AccessFlagBits::eHostRead;
 
-        vk::ImageCreateInfo image_info;
+        vk::Device device = context.get_device();
+        vk::ImageCreateInfo image_info{};
         image_info
                 .setFlags(image_create_flags)
                 .setImageType(image_type)
@@ -138,32 +138,66 @@ void transfer_image::create(vk::Device device, vk::PhysicalDevice gpu,
                 .setArrayLayers(1)
                 .setFormat(description.format)
                 .setTiling(image_tiling)
-                .setInitialLayout(vk::ImageLayout::ePreinitialized)
-                .setUsage(image_usage_flags)
+                .setInitialLayout(layout)
+                .setUsage(usage)
                 .setSharingMode(vk::SharingMode::eExclusive)
                 .setSamples(vk::SampleCountFlagBits::e1);
         image = device.createImage(image_info);
 
         vk::MemoryRequirements memory_requirements = device.getImageMemoryRequirements(image);
-        vk::DeviceSize byte_size = add_padding(memory_requirements.size, memory_requirements.alignment);
+        byte_size = memory_requirements.size;
 
-        using mem_bits = vk::MemoryPropertyFlagBits;
         uint32_t memory_type = get_memory_type(memory_requirements.memoryTypeBits,
-                mem_bits::eHostVisible | mem_bits::eHostCoherent, mem_bits::eHostCached, gpu);
+                requested_properties, optional_properties, context.get_gpu());
 
         vk::MemoryAllocateInfo allocInfo{ byte_size , memory_type };
         memory = device.allocateMemory(allocInfo);
 
         device.bindImageMemory(image, memory, 0);
+}
 
-        void* void_ptr = device.mapMemory(memory, 0, memory_requirements.size);
+void image2D::create_view(vk::Device device, vk::SamplerYcbcrConversion conversion) {
+        assert (!view);
+        vk::ImageViewCreateInfo view_info = 
+                default_image_view_create_info(format);
+        view_info.setImage(image);
+
+        vk::SamplerYcbcrConversionInfo yCbCr_info{ conversion };
+        view_info.setPNext(conversion ? &yCbCr_info : nullptr);
+        view = device.createImageView(view_info);
+}
+
+void image2D::destroy(vk::Device device) {
+        device.destroy(view);
+        view = nullptr;
+        device.destroy(image);
+        image = nullptr;
+
+        if (memory) {
+                device.unmapMemory(memory);
+                device.freeMemory(memory);
+        }
+}
+
+void transfer_image::recreate(vulkan_context& context,
+        vkd::image_description description)
+{
+        assert(id != NO_ID);
+        image2D.destroy(context.get_device());
+        
+        auto device = context.get_device();
+        using mem_bits = vk::MemoryPropertyFlagBits;
+        image2D.init(context, description, vk::ImageUsageFlagBits::eSampled, vk::AccessFlagBits::eHostWrite,
+                /*prinitialised: */ true, mem_bits::eHostVisible | mem_bits::eHostCoherent, mem_bits::eHostCached);
+        
+        void* void_ptr = device.mapMemory(image2D.memory, 0, image2D.byte_size);
         if (void_ptr == nullptr) {
                 throw vulkan_display_exception{"Image memory cannot be mapped."}; 
         }
         ptr = reinterpret_cast<std::byte*>(void_ptr);
 
         vk::ImageSubresource subresource{ vk::ImageAspectFlagBits::eColor, 0, 0 };
-        row_pitch = device.getImageSubresourceLayout(image, subresource).rowPitch;
+        row_pitch = device.getImageSubresourceLayout(image2D.image, subresource).rowPitch;
 }
 
 vk::ImageMemoryBarrier  transfer_image::create_memory_barrier(
@@ -172,10 +206,10 @@ vk::ImageMemoryBarrier  transfer_image::create_memory_barrier(
 {
         vk::ImageMemoryBarrier memory_barrier{};
         memory_barrier
-                .setImage(image)
-                .setOldLayout(layout)
+                .setImage(image2D.image)
+                .setOldLayout(image2D.layout)
                 .setNewLayout(new_layout)
-                .setSrcAccessMask(access)
+                .setSrcAccessMask(image2D.access)
                 .setDstAccessMask(new_access_mask)
                 .setSrcQueueFamilyIndex(src_queue_family_index)
                 .setDstQueueFamilyIndex(dst_queue_family_index);
@@ -184,28 +218,22 @@ vk::ImageMemoryBarrier  transfer_image::create_memory_barrier(
                 .setLayerCount(1)
                 .setLevelCount(1);
 
-        layout = new_layout;
-        access = new_access_mask;
+        image2D.layout = new_layout;
+        image2D.access = new_access_mask;
         return memory_barrier;
 }
 
 void transfer_image::prepare_for_rendering(vk::Device device, 
         vk::DescriptorSet descriptor_set, vk::Sampler sampler, vk::SamplerYcbcrConversion conversion) 
 {
-        if (!view) {
-                vk::ImageViewCreateInfo view_info = 
-                        default_image_view_create_info(description.format);
-                view_info.setImage(image);
-
-                vk::SamplerYcbcrConversionInfo yCbCr_info{ conversion };
-                view_info.setPNext(conversion ? &yCbCr_info : nullptr);
-                view = device.createImageView(view_info);
+        if (!image2D.view) {
+                image2D.create_view(device, conversion);
         }
         vk::DescriptorImageInfo description_image_info;
         description_image_info
                 .setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal)
                 .setSampler(sampler)
-                .setImageView(view);
+                .setImageView(image2D.view);
 
         vk::WriteDescriptorSet descriptor_writes{};
         descriptor_writes
@@ -227,17 +255,9 @@ void transfer_image::preprocess() {
         }
 }
 
-void transfer_image::destroy(vk::Device device, bool destroy_fence) {
-        device.destroy(view);
-        device.destroy(image);
-
-        if (memory) {
-                device.unmapMemory(memory);
-                device.freeMemory(memory);
-        }
-        if (destroy_fence) {
-                device.destroy(is_available_fence);
-        }
+void transfer_image::destroy(vk::Device device) {
+        image2D.destroy(device);
+        device.destroy(is_available_fence);
 }
 
 } //vulkan_display_detail

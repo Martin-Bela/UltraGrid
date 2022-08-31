@@ -520,7 +520,7 @@ image vulkan_display::acquire_image(image_description description) {
 
         if (transfer_image.get_description() != description) {
                 std::scoped_lock device_lock(device_mutex);
-                transfer_image.create(device, context.get_gpu(), description);
+                transfer_image.recreate(context, description);
         }
         
         return image{ transfer_image };
@@ -584,7 +584,6 @@ bool vulkan_display::display_queued_image() {
         }
 
         if(free_gpu_commands.empty()){
-                assert(false);
                 return false;
         }
         auto& commands = *free_gpu_commands.back();
