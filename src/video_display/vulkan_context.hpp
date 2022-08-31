@@ -82,14 +82,6 @@ struct window_parameters {
 
 constexpr uint32_t no_gpu_selected = UINT32_MAX;
 
-inline vk::ImageViewCreateInfo default_image_view_create_info(vk::Format format) {
-        vk::ImageViewCreateInfo image_view_info{ {}, {}, vk::ImageViewType::e2D, format };
-        image_view_info.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
-        image_view_info.subresourceRange.levelCount = 1;
-        image_view_info.subresourceRange.layerCount = 1;
-        return image_view_info;
-}
-
 class vulkan_instance;
 
 } // namespace vulkan_display ---------------------------------------------
@@ -105,6 +97,14 @@ constexpr uint32_t swapchain_image_out_of_date = UINT32_MAX;
 constexpr uint32_t swapchain_image_timeout = UINT32_MAX - 1;
 
 inline std::function<void(std::string_view)> log_msg;
+
+inline vk::ImageViewCreateInfo default_image_view_create_info(vk::Format format) {
+        vk::ImageViewCreateInfo image_view_info{ {}, {}, vk::ImageViewType::e2D, format };
+        image_view_info.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+        image_view_info.subresourceRange.levelCount = 1;
+        image_view_info.subresourceRange.layerCount = 1;
+        return image_view_info;
+}
 
 class vulkan_context {
         vk::Instance instance;

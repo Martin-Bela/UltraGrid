@@ -101,6 +101,8 @@
 #include <unordered_map>
 #include <utility> // pair
 
+namespace {
+
 using rang::fg;
 using rang::style;
 
@@ -108,10 +110,8 @@ namespace vkd = vulkan_display;
 namespace chrono = std::chrono;
 using namespace std::literals;
 
-namespace {
-
 constexpr int magic_vulkan_sdl2 = 0x3cc234a2;
-constexpr int max_frame_count = 5;
+constexpr int initial_frame_count = 0;
 #define MOD_NAME "[VULKAN_SDL2] "
 
 
@@ -138,30 +138,40 @@ public:
         }
 };
 
-constexpr size_t add_padding(size_t size, size_t allignment){
-        return ((size + allignment - 1) / allignment) * allignment;
-}
-constexpr size_t frame_size = add_padding(sizeof(video_frame) + sizeof(tile), alignof(video_frame));
+struct frame_mappings{
+        struct mapping{
+                video_frame* frame;
+                vkd::image image;
+        };
 
-struct ug_frames{
-        std::byte* base = nullptr;
-        void init(){
-                base = static_cast<std::byte*>(calloc(max_frame_count, frame_size));
-        }
-        void destroy(){
-                if (base) {
-                        free(base);
+        std::vector<mapping> mappings;
+
+        video_frame* create_frame(vkd::image image){
+                for(auto& pair : mappings){
+                        if(pair.image == nullptr){
+                                pair.image = image;
+                                return pair.frame;
+                        }
                 }
+                auto new_frame = vf_alloc(1);
+                mappings.emplace_back(mapping{new_frame, image});
+                return new_frame;
         }
-        size_t get_id(video_frame* frame){
-                auto diff = reinterpret_cast<std::byte*>(frame) - base;
-                assert(diff >= 0 && size_t(diff) % frame_size == 0);
-                size_t id = size_t(diff) / frame_size;
-                assert(id < max_frame_count);
-                return id;
-        } 
-        video_frame* operator[](size_t pos){
-                return reinterpret_cast<video_frame*>(base + pos * frame_size);
+
+        vkd::image get_image(video_frame* frame){
+                for(auto& pair : mappings){
+                        if(pair.frame == frame){
+                                return pair.image;
+                        }
+                }
+                assert(false);
+                return {};
+        }
+
+        ~frame_mappings(){
+                for(auto& pair : mappings){
+                        vf_free(pair.frame);
+                }
         }
 };
 
@@ -183,9 +193,7 @@ struct state_vulkan_sdl2 {
         SDL_Window* window = nullptr;
         std::unique_ptr<vkd::vulkan_display> vulkan = nullptr;
         std::unique_ptr<::window_callback> window_callback = nullptr;
-        
-        std::array<vkd::image, max_frame_count> images{};
-        ::ug_frames ug_frames;
+        std::unique_ptr<::frame_mappings> frame_mappings = std::make_unique<::frame_mappings>();
         
         std::atomic<bool> should_exit = false;
         video_desc current_desc{};
@@ -752,12 +760,10 @@ void* display_sdl2_init(module* parent, const char* fmt, unsigned int flags) {
                 }
 #endif
                 s->vulkan = std::make_unique<vkd::vulkan_display>();
-                s->vulkan->init(std::move(instance), surface, max_frame_count, *s->window_callback, args.gpu_idx, path_to_shaders, args.vsync, args.tearing_permitted);
+                s->vulkan->init(std::move(instance), surface, initial_frame_count, *s->window_callback, args.gpu_idx, path_to_shaders, args.vsync, args.tearing_permitted);
                 LOG(LOG_LEVEL_NOTICE) << MOD_NAME "Vulkan display initialised." << std::endl;
         }
         catch (std::exception& e) { log_and_exit_uv(e); return nullptr; }
-
-        s->ug_frames.init();
 
         draw_splashscreen(*s);
         return static_cast<void*>(s.release());
@@ -779,7 +785,6 @@ void display_sdl2_done(void* state) {
                 SDL_DestroyWindow(s->window);
                 s->window = nullptr;
         }
-        s->ug_frames.destroy();
 
         SDL_Quit();
 
@@ -814,10 +819,8 @@ video_frame* display_sdl2_getf(void* state) {
                 image = s->vulkan->acquire_image(to_vkd_image_desc(desc));
         } 
         catch (std::exception& e) { log_and_exit_uv(e); return nullptr; }
-        assert(image.get_id() < max_frame_count);
-        s->images[image.get_id()] = image;
+        video_frame& frame = *s->frame_mappings->create_frame(image);
         
-        video_frame& frame = *s->ug_frames[image.get_id()];
         update_description(desc, frame);
         auto texel_height = image.get_size().height;
         if (vkd::is_compressed_format(image.get_description().format)){
@@ -838,13 +841,11 @@ int display_sdl2_putf(void* state, video_frame* frame, long long timeout_ns) {
                 return 0;
         }
 
-        size_t id = s->ug_frames.get_id(frame);
-        auto& image = s->images[id];
-        assert(image.get_id() == id);
+        vkd::image image = s->frame_mappings->get_image(frame);
 
         if (timeout_ns == PUTF_DISCARD) {
                 try {
-                        s->vulkan->discard_image(s->images[id]);
+                        s->vulkan->discard_image(image);
                 } 
                 catch (std::exception& e) { log_and_exit_uv(e); return 1; }
                 return 0;
@@ -859,7 +860,7 @@ int display_sdl2_putf(void* state, video_frame* frame, long long timeout_ns) {
         }
         
         try {
-                return s->vulkan->queue_image(s->images[id], timeout_ns != PUTF_BLOCKING);
+                return s->vulkan->queue_image(image, timeout_ns != PUTF_BLOCKING);
         } 
         catch (std::exception& e) { log_and_exit_uv(e); return 1; }
         return 0;

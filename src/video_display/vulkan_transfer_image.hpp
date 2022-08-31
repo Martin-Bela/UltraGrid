@@ -131,6 +131,8 @@ class image {
         detail::transfer_image* transfer_image = nullptr;
 public:
         image() = default;
+        image(std::nullptr_t){};
+
         explicit image(detail::transfer_image& image) :
                 transfer_image{ &image }
         { 
@@ -167,6 +169,10 @@ public:
 
         void set_process_function(std::function<void(image& image)> function) {
                 transfer_image->preprocess_fun = std::move(function);
+        }
+
+        bool operator==(image other){
+                return transfer_image == other.transfer_image;
         }
 };
 

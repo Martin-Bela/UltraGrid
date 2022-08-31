@@ -194,7 +194,7 @@ void transfer_image::prepare_for_rendering(vk::Device device,
 {
         if (!view) {
                 vk::ImageViewCreateInfo view_info = 
-                        vkd::default_image_view_create_info(description.format);
+                        default_image_view_create_info(description.format);
                 view_info.setImage(image);
 
                 vk::SamplerYcbcrConversionInfo yCbCr_info{ conversion };

@@ -109,20 +109,6 @@ void update_render_area_viewport_scissor(render_area& render_area, vk::Viewport&
                 .setExtent({ render_area.width, render_area.height });
 }
 
-[[nodiscard]] transfer_image& acquire_transfer_image(std::vector<transfer_image*>& available_images,
-        concurrent_queue<transfer_image*>& available_img_queue) 
-{
-        transfer_image* result = nullptr;
-        if (!available_images.empty()){
-                result = available_images.back();
-                available_images.pop_back();
-        }
-        else{
-                available_img_queue.wait_dequeue(result);
-        }
-        return *result;
-}
-
 vk::PresentModeKHR get_present_mode(bool vsync_enabled, bool tearing_permitted){
         using e = vk::PresentModeKHR;
         if (vsync_enabled){
@@ -501,6 +487,22 @@ void vulkan_display::record_graphics_commands(detail::gpu_commands& commands,
         cmd_buffer.end();
 }
 
+transfer_image& vulkan_display::acquire_transfer_image() {
+        transfer_image* result = nullptr;
+        if (!available_images.empty()){
+                result = available_images.back();
+                available_images.pop_back();
+                return *result;
+        }
+
+        if (available_img_queue.wait_dequeue_timed(result, 5ms)){
+                return *result;
+        }
+        uint32_t id = transfer_images.size();
+        transfer_images.emplace_back(device, id);
+        return transfer_images.back();
+}
+
 image vulkan_display::acquire_image(image_description description) {
         assert(description.size.width * description.size.height != 0);
         assert(description.format != vk::Format::eUndefined);
@@ -513,7 +515,7 @@ image vulkan_display::acquire_image(image_description description) {
                         throw vulkan_display_exception{error_msg};
                 }
         }
-        transfer_image& transfer_image = acquire_transfer_image(available_images, available_img_queue);
+        transfer_image& transfer_image = acquire_transfer_image();
         assert(transfer_image.get_id() != transfer_image::NO_ID);
 
         if (transfer_image.get_description() != description) {

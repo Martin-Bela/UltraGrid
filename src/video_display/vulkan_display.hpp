@@ -149,6 +149,7 @@ class vulkan_display {
         bool destroyed = false;
 private:
         //void create_transfer_image(transfer_image*& result, image_description description);
+        [[nodiscard]] transfer_image& acquire_transfer_image();
 
         void record_graphics_commands(detail::gpu_commands& commands, transfer_image& transfer_image, uint32_t swapchain_image_id);
 

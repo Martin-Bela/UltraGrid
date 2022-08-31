@@ -410,7 +410,7 @@ void vulkan_context::create_swapchain_views() {
         auto image_count = static_cast<uint32_t>(images.size());
 
         vk::ImageViewCreateInfo image_view_info = 
-                vulkan_display::default_image_view_create_info(swapchain_atributes.format.format);
+                default_image_view_create_info(swapchain_atributes.format.format);
 
         swapchain_images.resize(image_count);
         for (uint32_t i = 0; i < image_count; i++) {
