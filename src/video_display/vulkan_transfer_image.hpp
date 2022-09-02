@@ -68,6 +68,14 @@ class image;
 
 namespace vulkan_display_detail {
 
+enum class memory_location{
+        device_local, host_local        
+};
+
+enum class initial_image_data{
+        preinitialised, undefined
+};
+
 class image2D{
 public:
         vk::DeviceMemory memory{};
@@ -84,14 +92,18 @@ public:
 public:
         void init(vulkan_context& context,
                 vulkan_display::image_description description, vk::ImageUsageFlags usage, 
-                vk::AccessFlags initial_access, bool preinitialised,
+                vk::AccessFlags initial_access, initial_image_data preinitialised, memory_location memory_location);
+
+        void init(vulkan_context& context,
+                vulkan_display::image_description description, vk::ImageUsageFlags usage, 
+                vk::AccessFlags initial_access, initial_image_data preinitialised, vk::ImageTiling tiling,
                 vk::MemoryPropertyFlags requested_properties, vk::MemoryPropertyFlags optional_properties);
 
         void create_view(vk::Device device, vk::SamplerYcbcrConversion conversion);
         
         void destroy(vk::Device device);
 public:
-        vulkan_display::image_description get_description() { return {size, format}; }
+        vulkan_display::image_description get_description() const { return {size, format}; }
 };
 
 class transfer_image {
@@ -119,7 +131,7 @@ public:
 
         void recreate(vulkan_context& context, vulkan_display::image_description description);
 
-        vulkan_display::image_description get_description(){ return image2D.get_description(); }
+        vulkan_display::image_description get_description() const { return image2D.get_description(); }
 
         vk::ImageMemoryBarrier create_memory_barrier(
                 vk::ImageLayout new_layout,

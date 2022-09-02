@@ -207,7 +207,7 @@ vk::DescriptorPool create_descriptor_pool(vk::Device device, size_t descriptor_c
         return device.createDescriptorPool(pool_info);
 }
 
-vk::DescriptorSetLayout create_descriptor_set_layout(vk::Device device, vk::Sampler sampler) {
+vk::DescriptorSetLayout create_render_descriptor_set_layout(vk::Device device, vk::Sampler sampler) {
         vk::DescriptorSetLayoutBinding descriptor_set_layout_bindings;
         descriptor_set_layout_bindings
                 .setBinding(1)
@@ -218,8 +218,7 @@ vk::DescriptorSetLayout create_descriptor_set_layout(vk::Device device, vk::Samp
 
         vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_info{};
         descriptor_set_layout_info
-                .setBindingCount(1)
-                .setPBindings(&descriptor_set_layout_bindings);
+                .setBindings(descriptor_set_layout_bindings);
 
         return device.createDescriptorSetLayout(descriptor_set_layout_info);
 }
@@ -254,7 +253,7 @@ vk::SamplerYcbcrConversion createYCbCrConversion(vk::Device device, vk::Format f
         return yCbCr_conversion;
 }
 
-vk::Sampler create_texture_sampler(vk::Device device, vk::SamplerYcbcrConversion yCbCr_conversion) {
+vk::Sampler create_sampler(vk::Device device, vk::SamplerYcbcrConversion yCbCr_conversion) {
         vk::SamplerYcbcrConversionInfo yCbCr_info{ yCbCr_conversion };
         
         vk::SamplerCreateInfo sampler_info;
@@ -270,7 +269,7 @@ vk::Sampler create_texture_sampler(vk::Device device, vk::SamplerYcbcrConversion
         return device.createSampler(sampler_info);
 }
 
-vk::PipelineLayout create_pipeline_layout(vk::Device device, vk::DescriptorSetLayout descriptor_set_layout){
+vk::PipelineLayout create_render_pipeline_layout(vk::Device device, vk::DescriptorSetLayout descriptor_set_layout){
         vk::PipelineLayoutCreateInfo pipeline_layout_info{};
 
         vk::PushConstantRange push_constants;
@@ -286,7 +285,7 @@ vk::PipelineLayout create_pipeline_layout(vk::Device device, vk::DescriptorSetLa
         return device.createPipelineLayout(pipeline_layout_info);
 }
 
-vk::Pipeline create_graphics_pipeline(vk::Device device, vk::PipelineLayout pipeline_layout, vk::RenderPass render_pass,    
+vk::Pipeline create_render_pipeline(vk::Device device, vk::PipelineLayout render_pipeline_layout, vk::RenderPass render_pass,    
         vk::ShaderModule vertex_shader, vk::ShaderModule fragment_shader) 
 {
         vk::GraphicsPipelineCreateInfo pipeline_info{};
@@ -348,15 +347,71 @@ vk::Pipeline create_graphics_pipeline(vk::Device device, vk::PipelineLayout pipe
         pipeline_info.setPDynamicState(&dynamic_state_info);
 
         pipeline_info
-                .setLayout(pipeline_layout)
+                .setLayout(render_pipeline_layout)
                 .setRenderPass(render_pass);
 
-        vk::Pipeline pipeline;
-        auto result = device.createGraphicsPipelines(nullptr, 1, &pipeline_info, nullptr, &pipeline);
+        vk::Pipeline render_pipeline;
+        auto result = device.createGraphicsPipelines(nullptr, 1, &pipeline_info, nullptr, &render_pipeline);
         if(result != vk::Result::eSuccess){
                 throw vulkan_display_exception{"Pipeline cannot be created."};
         }
-        return pipeline;
+        return render_pipeline;
+}
+
+vk::DescriptorSetLayout create_conversion_descriptor_set_layout(vk::Device device) {
+        std::array<vk::DescriptorSetLayoutBinding, 2> descriptor_set_layout_bindings;
+        descriptor_set_layout_bindings[0]
+                .setBinding(0)
+                .setDescriptorCount(1)
+                .setDescriptorType(vk::DescriptorType::eStorageImage)
+                .setStageFlags(vk::ShaderStageFlagBits::eCompute);
+
+        descriptor_set_layout_bindings[1]
+                .setBinding(1)
+                .setDescriptorCount(1)
+                .setDescriptorType(vk::DescriptorType::eStorageImage)
+                .setStageFlags(vk::ShaderStageFlagBits::eCompute);
+
+        vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_info{};
+        descriptor_set_layout_info
+                .setBindings(descriptor_set_layout_bindings);
+
+        return device.createDescriptorSetLayout(descriptor_set_layout_info);
+}
+
+vk::PipelineLayout create_compute_pipeline_layout(vk::Device device, vk::DescriptorSetLayout descriptor_set_layout){      
+        vk::PushConstantRange push_constant_range{};
+        push_constant_range
+                .setOffset(0)
+                .setSize(sizeof(image_size))
+                .setStageFlags(vk::ShaderStageFlagBits::eCompute);
+        
+        vk::PipelineLayoutCreateInfo pipeline_layout_info;
+        pipeline_layout_info
+                .setSetLayouts(descriptor_set_layout)
+                .setPushConstantRanges(push_constant_range);
+
+        return device.createPipelineLayout(pipeline_layout_info);
+}
+
+vk::Pipeline create_compute_pipeline(vk::Device device, vk::PipelineLayout pipeline_layout, vk::ShaderModule shader){
+        vk::PipelineShaderStageCreateInfo shader_stage_info;
+        shader_stage_info
+                .setModule(shader)
+                .setPName("main")
+                .setStage(vk::ShaderStageFlagBits::eCompute);
+
+        vk::ComputePipelineCreateInfo pipeline_info{};
+        pipeline_info
+                .setStage(shader_stage_info)
+                .setLayout(pipeline_layout);
+
+        vk::Pipeline compute_pipeline;
+        auto result =  device.createComputePipelines(nullptr, 1, &pipeline_info, nullptr, &compute_pipeline);
+        if(result != vk::Result::eSuccess){
+                throw vulkan_display_exception{"Pipeline cannot be created."};
+        }
+        return compute_pipeline;
 }
 
 } //namespace -------------------------------------------------------------
@@ -365,21 +420,23 @@ vk::Pipeline create_graphics_pipeline(vk::Device device, vk::PipelineLayout pipe
 namespace vulkan_display {
 
 void vulkan_display::init(vulkan_instance&& instance, VkSurfaceKHR surface, uint32_t initial_image_count,
-        window_changed_callback& window, uint32_t gpu_index, std::filesystem::path path_to_shaders, bool vsync, bool tearing_permitted) {
-        // Order of following calls is important
+        window_changed_callback& window, uint32_t gpu_index, std::filesystem::path shaders_path, bool vsync, bool tearing_permitted) {
         assert(surface);
         this->window = &window;
+        this->path_to_shaders = std::move(shaders_path);
+
         auto window_parameters = window.get_window_parameters();
-        
+
         context.init(std::move(instance), surface, window_parameters, gpu_index, get_present_mode(vsync, tearing_permitted));
         device = context.get_device();
         
         command_pool = create_command_pool(device, context.get_queue_familt_index());
-        descriptor_pool = create_descriptor_pool(device, gpu_commands.size());
+        descriptor_pool = create_descriptor_pool(device, frame_resources.size());
         vertex_shader = create_shader(path_to_shaders / "vert.spv", device);
         fragment_shader = create_shader(path_to_shaders / "frag.spv", device);
         render_pass = create_render_pass(device, context.get_swapchain_image_format());
-        
+        regular_sampler = create_sampler(device, nullptr);
+
         vk::ClearColorValue clear_color_value{};
         clear_color_value.setFloat32({ 0.01f, 0.01f, 0.01f, 1.0f });
         clear_color.setColor(clear_color_value);
@@ -392,17 +449,34 @@ void vulkan_display::init(vulkan_instance&& instance, VkSurfaceKHR surface, uint
                 available_images.push_back(&transfer_images.back());
         }
 
-        auto command_buffers = create_command_buffers(device, command_pool, gpu_commands.size());
-        for (size_t i = 0; i < gpu_commands.size(); i++){
-                auto& commands = gpu_commands[i];
-                commands.image_acquired = create_semaphore(device);
-                commands.image_rendered = create_semaphore(device);
+        auto command_buffers = create_command_buffers(device, command_pool, frame_resources.size());
+        for (size_t i = 0; i < frame_resources.size(); i++){
+                auto& commands = frame_resources[i];
+                commands.image_acquired_semaphore = create_semaphore(device);
+                commands.image_rendered_semaphore = create_semaphore(device);
                 commands.command_buffer = command_buffers[i];
         }
 
-        free_gpu_commands.reserve(gpu_commands.size());
-        for(auto& command: gpu_commands){
-                free_gpu_commands.emplace_back(&command);
+        free_frame_resources.reserve(frame_resources.size());
+        for(auto& command: frame_resources){
+                free_frame_resources.emplace_back(&command);
+        }
+}
+
+void vulkan_display::destroy_format_dependent_resources(){
+        device.destroy(render_pipeline);
+        device.destroy(render_pipeline_layout);
+        device.destroy(descriptor_set_layout);
+        device.destroy(yCbCr_sampler);
+        device.destroy(yCbCr_conversion);
+        
+        device.destroy(conversion_shader);
+        device.destroy(conversion_pipeline_layout);
+        device.destroy(conversion_pipeline);
+        device.destroy(conversion_desc_set_layout);
+
+        for(auto& resorces: frame_resources){
+                resorces.converted_image.destroy(device);
         }
 }
 
@@ -420,17 +494,12 @@ void vulkan_display::destroy() {
                         device.destroy(render_pass);
                         device.destroy(fragment_shader);
                         device.destroy(vertex_shader);
-                        for (auto& commands : gpu_commands) {
-                                device.destroy(commands.image_acquired);
-                                device.destroy(commands.image_rendered);
+                        device.destroy(regular_sampler);
+                        for (auto& commands : frame_resources) {
+                                device.destroy(commands.image_acquired_semaphore);
+                                device.destroy(commands.image_rendered_semaphore);
                         }
-                        device.destroy(pipeline);
-                        device.destroy(pipeline_layout);
-                        device.destroy(descriptor_set_layout);
-                        device.destroy(sampler);
-                        if (yCbCr_conversion) {
-                                device.destroy(yCbCr_conversion);
-                        }
+                        destroy_format_dependent_resources();
                 }
                 context.destroy();
         }
@@ -444,10 +513,10 @@ bool vulkan_display::is_image_description_supported(image_description descriptio
         return transfer_image::is_image_description_supported(context.get_gpu(), description);
 }
 
-void vulkan_display::record_graphics_commands(detail::gpu_commands& commands, 
+void vulkan_display::record_graphics_commands(detail::per_frame_resources& frame_resources, 
         transfer_image& transfer_image, uint32_t swapchain_image_id) 
 {
-        vk::CommandBuffer cmd_buffer = commands.command_buffer;
+        vk::CommandBuffer cmd_buffer = frame_resources.command_buffer;
         cmd_buffer.reset(vk::CommandBufferResetFlags{});
 
         vk::CommandBufferBeginInfo begin_info{};
@@ -468,13 +537,13 @@ void vulkan_display::record_graphics_commands(detail::gpu_commands& commands,
                 .setFramebuffer(context.get_framebuffer(swapchain_image_id));
         cmd_buffer.beginRenderPass(render_pass_begin_info, vk::SubpassContents::eInline);
 
-        cmd_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
+        cmd_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, render_pipeline);
 
         cmd_buffer.setScissor(0, scissor);
         cmd_buffer.setViewport(0, viewport);
-        cmd_buffer.pushConstants(pipeline_layout, vk::ShaderStageFlagBits::eFragment, 0, sizeof(render_area), &render_area);
+        cmd_buffer.pushConstants(render_pipeline_layout, vk::ShaderStageFlagBits::eFragment, 0, sizeof(render_area), &render_area);
         cmd_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                pipeline_layout, 0, commands.descriptor_set, nullptr);
+                render_pipeline_layout, 0, frame_resources.render_descriptor_set, nullptr);
         cmd_buffer.draw(6, 1, 0, 0);
 
         cmd_buffer.endRenderPass();
@@ -556,6 +625,55 @@ bool vulkan_display::queue_image(image image, bool discardable) {
         }*/
 }
 
+void vulkan_display::reconfigure(const transfer_image& transfer_image){
+        auto image_format = transfer_image.get_description().format;
+        if (image_format != current_image_description.format) {
+                log_msg("Recreating render_pipeline");
+                context.get_queue().waitIdle();
+                device.resetDescriptorPool(descriptor_pool);
+
+                destroy_format_dependent_resources();
+
+                if(is_yCbCr_format(image_format)){
+                        yCbCr_conversion = createYCbCrConversion(device, image_format);
+                        yCbCr_sampler = create_sampler(device, yCbCr_conversion);
+                }
+                else{
+                        yCbCr_conversion = nullptr;
+                        yCbCr_sampler = nullptr;
+                }
+                if(image_format == vk::Format::eR8G8B8A8Unorm){
+                        conversion_shader = create_shader(path_to_shaders / "identity.spv", device);
+                        conversion_desc_set_layout = create_conversion_descriptor_set_layout(device);
+                        conversion_pipeline_layout = create_compute_pipeline_layout(device, conversion_desc_set_layout);
+                        conversion_pipeline = create_compute_pipeline(device, conversion_pipeline_layout, conversion_shader);
+                        for(size_t i = 0; i < frame_resources.size(); i++){
+                                frame_resources[i].converted_image.init(
+                                        context, 
+                                        image_description{transfer_image.get_description().size, vk::Format::eR8G8B8A8Unorm}, 
+                                        vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled,
+                                        vk::AccessFlagBits::eShaderWrite,
+                                        initial_image_data::undefined, memory_location::device_local);
+
+                        }
+                }
+
+                descriptor_set_layout = create_render_descriptor_set_layout(device, yCbCr_sampler ? yCbCr_sampler : regular_sampler );
+                render_pipeline_layout = create_render_pipeline_layout(device, descriptor_set_layout);
+                render_pipeline = create_render_pipeline(device, render_pipeline_layout, render_pass, vertex_shader, fragment_shader);
+                auto descriptor_sets = allocate_description_sets(device, descriptor_pool, 
+                        descriptor_set_layout, frame_resources.size());
+                for(size_t i = 0; i < frame_resources.size(); i++){
+                        frame_resources[i].render_descriptor_set = descriptor_sets[i];
+                }
+        }
+
+        current_image_description = transfer_image.get_description();
+        auto parameters = context.get_window_parameters();
+        update_render_area_viewport_scissor(render_area, viewport, scissor,
+                { parameters.width, parameters.height }, current_image_description.size);
+}
+
 bool vulkan_display::display_queued_image() {
         auto window_parameters = window->get_window_parameters();
         if (window_parameters.is_minimized()) {
@@ -570,7 +688,7 @@ bool vulkan_display::display_queued_image() {
                         auto result = device.waitForFences(first_image->is_available_fence, VK_TRUE, 0);
                         if (result == vk::Result::eSuccess){
                                 device.resetFences(first_image->is_available_fence);
-                                free_gpu_commands.push_back(rendered_images.front().gpu_commands);
+                                free_frame_resources.push_back(rendered_images.front().gpu_commands);
                                 rendered_images.pop();
                                 available_img_queue.enqueue(first_image);
                         }
@@ -583,11 +701,11 @@ bool vulkan_display::display_queued_image() {
                 }
         }
 
-        if(free_gpu_commands.empty()){
+        if(free_frame_resources.empty()){
                 return false;
         }
-        auto& commands = *free_gpu_commands.back();
-        free_gpu_commands.pop_back();
+        auto& commands = *free_frame_resources.back();
+        free_frame_resources.pop_back();
 
         transfer_image* transfer_image_ptr = nullptr;
         bool dequeued = filled_img_queue.wait_dequeue_timed(transfer_image_ptr, waiting_time_for_filled_image);
@@ -600,35 +718,10 @@ bool vulkan_display::display_queued_image() {
 
         std::unique_lock lock(device_mutex);
         if (transfer_image.get_description() != current_image_description) {
-                auto image_format = transfer_image.get_description().format;
-                if (image_format != current_image_description.format) {
-                        log_msg("Recreating pipeline");
-                        context.get_queue().waitIdle();
-                        device.resetDescriptorPool(descriptor_pool);
-                        device.destroy(pipeline);
-                        device.destroy(pipeline_layout);
-                        device.destroy(descriptor_set_layout);
-                        device.destroy(sampler);
-                        device.destroy(yCbCr_conversion);
-
-                        yCbCr_conversion = createYCbCrConversion(device, image_format);
-                        sampler = create_texture_sampler(device, yCbCr_conversion);
-                        descriptor_set_layout = create_descriptor_set_layout(device, sampler);
-                        pipeline_layout = create_pipeline_layout(device, descriptor_set_layout);
-                        pipeline = create_graphics_pipeline(device, pipeline_layout, render_pass, vertex_shader, fragment_shader);
-                        auto descriptor_sets = allocate_description_sets(device, descriptor_pool, 
-                                descriptor_set_layout, gpu_commands.size());
-                        for(size_t i = 0; i < gpu_commands.size(); i++){
-                                gpu_commands[i].descriptor_set = descriptor_sets[i];
-                        }
-                }
-                current_image_description = transfer_image.get_description();
-                auto parameters = context.get_window_parameters();
-                update_render_area_viewport_scissor(render_area, viewport, scissor,
-                        { parameters.width, parameters.height }, current_image_description.size);
+                reconfigure(transfer_image);
         }
 
-        uint32_t swapchain_image_id = context.acquire_next_swapchain_image(commands.image_acquired);
+        uint32_t swapchain_image_id = context.acquire_next_swapchain_image(commands.image_acquired_semaphore);
         int swapchain_recreation_attempt = 0;
         while (swapchain_image_id == swapchain_image_out_of_date || swapchain_image_id == swapchain_image_timeout) 
         {
@@ -648,10 +741,10 @@ bool vulkan_display::display_queued_image() {
                         { window_parameters.width, window_parameters.height },
                         current_image_description.size);
                 
-                swapchain_image_id = context.acquire_next_swapchain_image(commands.image_acquired);
+                swapchain_image_id = context.acquire_next_swapchain_image(commands.image_acquired_semaphore);
         }
         transfer_image.prepare_for_rendering(device, 
-                commands.descriptor_set, sampler, yCbCr_conversion);
+                commands.render_descriptor_set, current_sampler(), yCbCr_conversion);
         lock.unlock();
 
         record_graphics_commands(commands, transfer_image, swapchain_image_id);
@@ -662,9 +755,9 @@ bool vulkan_display::display_queued_image() {
                 .setPCommandBuffers(&commands.command_buffer)
                 .setPWaitDstStageMask(wait_masks.data())
                 .setWaitSemaphoreCount(1)
-                .setPWaitSemaphores(&commands.image_acquired)
+                .setPWaitSemaphores(&commands.image_acquired_semaphore)
                 .setSignalSemaphoreCount(1)
-                .setPSignalSemaphores(&commands.image_rendered);
+                .setPSignalSemaphores(&commands.image_rendered_semaphore);
 
         context.get_queue().submit(submit_info, transfer_image.is_available_fence);
 
@@ -675,7 +768,7 @@ bool vulkan_display::display_queued_image() {
                 .setSwapchainCount(1)
                 .setPSwapchains(&swapchain)
                 .setWaitSemaphoreCount(1)
-                .setPWaitSemaphores(&commands.image_rendered);
+                .setPWaitSemaphores(&commands.image_rendered_semaphore);
 
         auto present_result = context.get_queue().presentKHR(&present_info);
 

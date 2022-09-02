@@ -792,7 +792,7 @@ void display_sdl2_done(void* state) {
 }
 
 constexpr std::array<std::pair<codec_t, vk::Format>, 6> codec_to_vulkan_format_mapping {{
-        {RGBA, vk::Format::eR8G8B8A8Srgb},
+        {RGBA, vk::Format::eR8G8B8A8Unorm},
         {RGB, vk::Format::eR8G8B8Srgb},
         {UYVY, vk::Format::eB8G8R8G8422Unorm},
         {YUYV, vk::Format::eG8B8G8R8422Unorm},

@@ -68,11 +68,19 @@ struct render_area {
         uint32_t height;
 };
 
-struct gpu_commands {
+struct image_size{
+        uint32_t width;
+        uint32_t height;
+};
+
+struct per_frame_resources{
         vk::CommandBuffer command_buffer;
-        vk::Semaphore image_acquired;
-        vk::Semaphore image_rendered;
-        vk::DescriptorSet descriptor_set;
+        vk::Semaphore image_acquired_semaphore;
+        vk::Semaphore image_rendered_semaphore;
+        vk::DescriptorSet render_descriptor_set;
+
+        image2D converted_image; 
+        vk::DescriptorSet conversion_descriptor_set;
 };
 
 
@@ -100,8 +108,10 @@ public:
 };
 
 class vulkan_display {
+        std::filesystem::path path_to_shaders;
         window_changed_callback* window = nullptr;
         detail::vulkan_context context;
+        
         vk::Device device;
         std::mutex device_mutex{};
 
@@ -116,16 +126,23 @@ class vulkan_display {
         vk::ClearValue clear_color;
 
         vk::SamplerYcbcrConversion yCbCr_conversion;
-        vk::Sampler sampler{};
+        vk::Sampler regular_sampler;
+        vk::Sampler yCbCr_sampler;
 
         vk::DescriptorSetLayout descriptor_set_layout;
-        vk::PipelineLayout pipeline_layout;
-        vk::Pipeline pipeline;
+        vk::PipelineLayout render_pipeline_layout;
+        vk::Pipeline render_pipeline;
 
+        bool format_conversion_enabled = false;
+        vk::ShaderModule conversion_shader;
+        vk::PipelineLayout conversion_pipeline_layout;
+        vk::Pipeline conversion_pipeline;
+        vk::DescriptorSetLayout conversion_desc_set_layout;
+        
         vk::DescriptorPool descriptor_pool;
         vk::CommandPool command_pool;
-        std::array<detail::gpu_commands, 3> gpu_commands;
-        std::vector<detail::gpu_commands*> free_gpu_commands;
+        std::array<detail::per_frame_resources, 3> frame_resources;
+        std::vector<detail::per_frame_resources*> free_frame_resources;
 
         image_description current_image_description;
 
@@ -141,7 +158,7 @@ class vulkan_display {
 
         struct rendered_image{
                 transfer_image* image;
-                detail::gpu_commands* gpu_commands;
+                detail::per_frame_resources* gpu_commands;
         };
         std::queue<rendered_image> rendered_images;
 
@@ -151,8 +168,13 @@ private:
         //void create_transfer_image(transfer_image*& result, image_description description);
         [[nodiscard]] transfer_image& acquire_transfer_image();
 
-        void record_graphics_commands(detail::gpu_commands& commands, transfer_image& transfer_image, uint32_t swapchain_image_id);
+        void record_graphics_commands(detail::per_frame_resources& commands, transfer_image& transfer_image, uint32_t swapchain_image_id);
 
+        void reconfigure(const transfer_image& transfer_image);
+
+        vk::Sampler current_sampler(){ return yCbCr_sampler ? yCbCr_sampler : regular_sampler; }
+
+        void destroy_format_dependent_resources();
 public:
         /// TERMINOLOGY:
         /// render thread - thread which renders queued images on the screen 
@@ -198,6 +220,8 @@ public:
                 assert(ptr);
                 available_images.push_back(ptr);
         }
+
+
 
         /** Thread-safe to call from render thread.
          **

@@ -82,7 +82,6 @@ uint32_t get_memory_type(
         throw vulkan_display_exception{"No available memory for transfer images found."};
 }
 
-constexpr vk::ImageType image_type = vk::ImageType::e2D;
 constexpr vk::ImageTiling image_tiling = vk::ImageTiling::eLinear;
 const vk::ImageUsageFlags image_usage_flags = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst;
 constexpr vk::ImageCreateFlags image_create_flags = {};
@@ -94,7 +93,7 @@ bool transfer_image::is_image_description_supported(vk::PhysicalDevice gpu, vkd:
         vk::ImageFormatProperties properties;
         auto result = gpu.getImageFormatProperties(
                 description.format,
-                image_type,
+                vk::ImageType::e2D,
                 image_tiling,
                 image_usage_flags,
                 image_create_flags,
@@ -118,26 +117,50 @@ void transfer_image::init(vk::Device device, uint32_t id) {
         is_available_fence = device.createFence(fence_info);
 }
 
+void image2D::init(vulkan_context& context,
+        vulkan_display::image_description description, vk::ImageUsageFlags usage, 
+        vk::AccessFlags initial_access, initial_image_data preinitialised, memory_location memory_location)
+{
+        vk::ImageTiling tiling;
+        vk::MemoryPropertyFlags requested_properties;
+        vk::MemoryPropertyFlags optional_properties;
+        
+        using mem_bits = vk::MemoryPropertyFlagBits;
+        if (memory_location == memory_location::host_local){
+                tiling = vk::ImageTiling::eLinear;
+                requested_properties = mem_bits::eHostVisible | mem_bits::eHostCoherent;
+                optional_properties = mem_bits::eHostCached;
+        }
+        else{
+                tiling = vk::ImageTiling::eOptimal;
+                requested_properties = {};
+                optional_properties = mem_bits::eDeviceLocal;
+        }
+        this->init(context, description, usage, initial_access, preinitialised, tiling, requested_properties, optional_properties);
+}
+
 void image2D::init(vulkan_context& context, vkd::image_description description, vk::ImageUsageFlags usage, 
-        vk::AccessFlags initial_access, bool preinitialised,
+        vk::AccessFlags initial_access, initial_image_data preinitialised, vk::ImageTiling tiling,
         vk::MemoryPropertyFlags requested_properties, vk::MemoryPropertyFlags optional_properties)
 {
         this->format = description.format;
         this->size = description.size;
         this->access = initial_access;
-        this->layout = preinitialised ? vk::ImageLayout::ePreinitialized : vk::ImageLayout::eUndefined;
+        this->layout = preinitialised == initial_image_data::preinitialised ? 
+                vk::ImageLayout::ePreinitialized : 
+                vk::ImageLayout::eUndefined;
         this->view = nullptr;
 
         vk::Device device = context.get_device();
         vk::ImageCreateInfo image_info{};
         image_info
                 .setFlags(image_create_flags)
-                .setImageType(image_type)
+                .setImageType(vk::ImageType::e2D)
                 .setExtent(vk::Extent3D{ description.size, 1 })
                 .setMipLevels(1)
                 .setArrayLayers(1)
                 .setFormat(description.format)
-                .setTiling(image_tiling)
+                .setTiling(tiling)
                 .setInitialLayout(layout)
                 .setUsage(usage)
                 .setSharingMode(vk::SharingMode::eExclusive)
@@ -174,7 +197,6 @@ void image2D::destroy(vk::Device device) {
         image = nullptr;
 
         if (memory) {
-                device.unmapMemory(memory);
                 device.freeMemory(memory);
         }
 }
@@ -186,9 +208,9 @@ void transfer_image::recreate(vulkan_context& context,
         image2D.destroy(context.get_device());
         
         auto device = context.get_device();
-        using mem_bits = vk::MemoryPropertyFlagBits;
+        
         image2D.init(context, description, vk::ImageUsageFlagBits::eSampled, vk::AccessFlagBits::eHostWrite,
-                /*prinitialised: */ true, mem_bits::eHostVisible | mem_bits::eHostCoherent, mem_bits::eHostCached);
+                initial_image_data::preinitialised, memory_location::host_local);
         
         void* void_ptr = device.mapMemory(image2D.memory, 0, image2D.byte_size);
         if (void_ptr == nullptr) {
@@ -256,6 +278,7 @@ void transfer_image::preprocess() {
 }
 
 void transfer_image::destroy(vk::Device device) {
+        device.unmapMemory(image2D.memory);
         image2D.destroy(device);
         device.destroy(is_available_fence);
 }
