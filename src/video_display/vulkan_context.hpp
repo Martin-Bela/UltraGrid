@@ -1,6 +1,6 @@
 /**
  * @file   video_display/vulkan_context.h
- * @author Martin Be¾a      <492789@mail.muni.cz>
+ * @author Martin Bela      <492789@mail.muni.cz>
  */
 /*
  * Copyright (c) 2021-2022 CESNET, z. s. p. o.
@@ -37,10 +37,6 @@
 
 #pragma once
 
-#ifdef VULKAN_DISPLAY_NO_EXCEPTIONS
-#define VULKAN_HPP_VULKAN_DISPLAY_NO_EXCEPTIONS
-#endif //VULKAN_DISPLAY_NO_EXCEPTIONS
-
 #include <vulkan/vulkan.hpp>
 static_assert(VK_HEADER_VERSION > 100); // minimum Vulkan SDK version is 1.1.101
 //Newer versions can be downloaded from the official website:
@@ -56,23 +52,22 @@ static_assert(VK_HEADER_VERSION > 100); // minimum Vulkan SDK version is 1.1.101
 #include <memory>
 #include <string>
 
+namespace vulkan_display {
 
-struct  vulkan_display_exception : public std::runtime_error {
-        explicit vulkan_display_exception(const std::string& msg) :
+struct  VulkanError : public std::runtime_error {
+        explicit VulkanError(const std::string& msg) :
                 std::runtime_error{ msg } { }
 };
 
-namespace vulkan_display {
-
-struct window_parameters {
+struct WindowParameters {
         uint32_t width;
         uint32_t height;
 
-        constexpr bool operator==(const window_parameters& other) const {
+        constexpr bool operator==(const WindowParameters& other) const {
                 return width == other.width &&
                         height == other.height;
         }
-        constexpr bool operator!=(const window_parameters& other) const {
+        constexpr bool operator!=(const WindowParameters& other) const {
                 return !(*this == other);
         }
         constexpr bool is_minimized() const {
@@ -82,14 +77,13 @@ struct window_parameters {
 
 constexpr uint32_t no_gpu_selected = UINT32_MAX;
 
-class vulkan_instance;
+class VulkanInstance;
 
 } // namespace vulkan_display ---------------------------------------------
 
 
 namespace vulkan_display_detail {
 
-using c_str = const char*;
 using namespace std::literals;
 
 constexpr uint32_t no_queue_index_found = UINT32_MAX;
@@ -106,7 +100,7 @@ inline vk::ImageViewCreateInfo default_image_view_create_info(vk::Format format)
         return image_view_info;
 }
 
-class vulkan_context {
+class VulkanContext {
         vk::Instance instance;
         std::unique_ptr<vk::DispatchLoaderDynamic> dynamic_dispatcher{};
         vk::DebugUtilsMessengerEXT messenger;
@@ -127,12 +121,12 @@ class vulkan_context {
                 vk::PresentModeKHR mode = vk::PresentModeKHR::eFifo;
         } swapchain_atributes;
 
-        struct swapchain_image {
+        struct SwapchainImage {
                 vk::Image image;
                 vk::ImageView view;
                 vk::Framebuffer framebuffer;
         };
-        std::vector<swapchain_image> swapchain_images{};
+        std::vector<SwapchainImage> swapchain_images{};
 
         vk::Extent2D window_size{ 0, 0 };
         vk::PresentModeKHR preferred_present_mode;
@@ -174,12 +168,12 @@ private:
         }
 
 public:
-        using window_parameters = vulkan_display::window_parameters;
+        using WindowParameters = vulkan_display::WindowParameters;
 
-        vulkan_context() = default;
+        VulkanContext() = default;
 
-        void init(vulkan_display::vulkan_instance&& instance, VkSurfaceKHR surface, 
-                window_parameters, uint32_t gpu_index, vk::PresentModeKHR preferred_mode);
+        void init(vulkan_display::VulkanInstance&& instance, VkSurfaceKHR surface,
+                WindowParameters, uint32_t gpu_index, vk::PresentModeKHR preferred_mode);
 
         void destroy();
 
@@ -191,11 +185,11 @@ public:
                 return swapchain_images[framebuffer_id].framebuffer;
         }
 
-        window_parameters get_window_parameters() const {
+        WindowParameters get_window_parameters() const {
                 return { window_size.width, window_size.height };
         }
 
-        void recreate_swapchain(window_parameters parameters, vk::RenderPass render_pass);
+        void recreate_swapchain(WindowParameters parameters, vk::RenderPass render_pass);
 };
 
 }//namespace vulkan_display_detail ----------------------------------------------------------------
@@ -207,7 +201,7 @@ inline void cout_msg(std::string_view msg) {
         std::cout << msg << std::endl;
 }
 
-class vulkan_instance {
+class VulkanInstance {
         vk::Instance instance{};
         std::unique_ptr<vk::DispatchLoaderDynamic> dynamic_dispatcher = nullptr;
         vk::DebugUtilsMessengerEXT messenger{};
@@ -215,16 +209,16 @@ class vulkan_instance {
 
         void init_validation_layers_error_messenger();
 
-        friend void vulkan_display_detail::vulkan_context::init(vulkan_instance&&, 
-                VkSurfaceKHR, window_parameters, uint32_t, vk::PresentModeKHR);
+        friend void vulkan_display_detail::VulkanContext::init(VulkanInstance&&,
+                VkSurfaceKHR, WindowParameters, uint32_t, vk::PresentModeKHR);
 public:
-        vulkan_instance() = default;
-        vulkan_instance(const vulkan_instance& other) = delete;
-        vulkan_instance& operator=(const vulkan_instance& other) = delete;
-        vulkan_instance(vulkan_instance&& other) = delete;
-        vulkan_instance& operator=(vulkan_instance&& other) = delete;
+        VulkanInstance() = default;
+        VulkanInstance(const VulkanInstance& other) = delete;
+        VulkanInstance& operator=(const VulkanInstance& other) = delete;
+        VulkanInstance(VulkanInstance&& other) = delete;
+        VulkanInstance& operator=(VulkanInstance&& other) = delete;
         
-        ~vulkan_instance() {
+        ~VulkanInstance() {
                 destroy();
         }
 

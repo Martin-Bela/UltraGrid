@@ -1,6 +1,6 @@
 /**
  * @file   video_display/vulkan_display.cpp
- * @author Martin Be¾a      <492789@mail.muni.cz>
+ * @author Martin Bela      <492789@mail.muni.cz>
  */
 /*
  * Copyright (c) 2021-2022 CESNET, z. s. p. o.
@@ -61,7 +61,7 @@ vk::ShaderModule create_shader(
 {
         std::ifstream file(file_path, std::ios::binary);
         if(!file.is_open()){
-                throw vulkan_display_exception{"Failed to open file:"s + file_path.string()};
+                throw VulkanError{"Failed to open file:"s + file_path.string()};
         }
         auto size = std::filesystem::file_size(file_path);
         assert(size % 4 == 0);
@@ -69,7 +69,7 @@ vk::ShaderModule create_shader(
         file.read(reinterpret_cast<char*>(shader_code.data()), static_cast<std::streamsize>(size));
         
         if(!file.good()){
-                throw vulkan_display_exception{"Error reading from file:"s + file_path.string()};
+                throw VulkanError{"Error reading from file:"s + file_path.string()};
         }
 
         vk::ShaderModuleCreateInfo shader_info;
@@ -79,7 +79,7 @@ vk::ShaderModule create_shader(
         return device.createShaderModule(shader_info);
 }
 
-void update_render_area_viewport_scissor(render_area& render_area, vk::Viewport& viewport, vk::Rect2D& scissor, 
+void update_render_area_viewport_scissor(RenderArea& render_area, vk::Viewport& viewport, vk::Rect2D& scissor,
         vk::Extent2D window_size, vk::Extent2D transfer_image_size) {
 
         double wnd_aspect = static_cast<double>(window_size.width) / window_size.height;
@@ -110,17 +110,17 @@ void update_render_area_viewport_scissor(render_area& render_area, vk::Viewport&
 }
 
 vk::PresentModeKHR get_present_mode(bool vsync_enabled, bool tearing_permitted){
-        using e = vk::PresentModeKHR;
+        using Mode = vk::PresentModeKHR;
         if (vsync_enabled){
-                return tearing_permitted ? e::eFifoRelaxed : e::eFifo;
+                return tearing_permitted ? Mode::eFifoRelaxed : Mode::eFifo;
         }
-        return tearing_permitted ? e::eImmediate : e::eMailbox;
+        return tearing_permitted ? Mode::eImmediate : Mode::eMailbox;
 }
 
-void discard_filled_image(concurrent_circular_buffer<transfer_image*>& filled_img_queue, 
-        concurrent_queue<transfer_image*>& available_img_queue)
+void discard_filled_image(ConcurrentCircularBuffer<TransferImageImpl*>& filled_img_queue,
+        ConcurrentQueue<TransferImageImpl*>& available_img_queue)
 {
-        transfer_image* transfer_image = nullptr;
+        TransferImageImpl* transfer_image = nullptr;
         bool dequeued = filled_img_queue.try_dequeue(transfer_image);
         if (dequeued && transfer_image) {
                 available_img_queue.enqueue(transfer_image);
@@ -129,10 +129,10 @@ void discard_filled_image(concurrent_circular_buffer<transfer_image*>& filled_im
 
 vk::CommandPool create_command_pool(vk::Device device, uint32_t queue_family_index) {
         vk::CommandPoolCreateInfo pool_info{};
-        using bits = vk::CommandPoolCreateFlagBits;
+        using Bits = vk::CommandPoolCreateFlagBits;
         pool_info
                 .setQueueFamilyIndex(queue_family_index)
-                .setFlags(bits::eTransient | bits::eResetCommandBuffer);
+                .setFlags(Bits::eTransient | Bits::eResetCommandBuffer);
         return device.createCommandPool(pool_info);
 }
 
@@ -275,7 +275,7 @@ vk::PipelineLayout create_render_pipeline_layout(vk::Device device, vk::Descript
         vk::PushConstantRange push_constants;
         push_constants
                 .setOffset(0)
-                .setSize(sizeof(render_area))
+                .setSize(sizeof(RenderArea))
                 .setStageFlags(vk::ShaderStageFlagBits::eFragment);
         pipeline_layout_info
                 .setPushConstantRangeCount(1)
@@ -328,11 +328,11 @@ vk::Pipeline create_render_pipeline(vk::Device device, vk::PipelineLayout render
                 .setRasterizationSamples(vk::SampleCountFlagBits::e1);
         pipeline_info.setPMultisampleState(&multisample_info);
 
-        using color_flags = vk::ColorComponentFlagBits;
+        using ColorFlags = vk::ColorComponentFlagBits;
         vk::PipelineColorBlendAttachmentState color_blend_attachment{};
         color_blend_attachment
                 .setBlendEnable(false)
-                .setColorWriteMask(color_flags::eR | color_flags::eG | color_flags::eB | color_flags::eA);
+                .setColorWriteMask(ColorFlags::eR | ColorFlags::eG | ColorFlags::eB | ColorFlags::eA);
         vk::PipelineColorBlendStateCreateInfo color_blend_info{};
         color_blend_info
                 .setAttachmentCount(1)
@@ -353,7 +353,7 @@ vk::Pipeline create_render_pipeline(vk::Device device, vk::PipelineLayout render
         vk::Pipeline render_pipeline;
         auto result = device.createGraphicsPipelines(nullptr, 1, &pipeline_info, nullptr, &render_pipeline);
         if(result != vk::Result::eSuccess){
-                throw vulkan_display_exception{"Pipeline cannot be created."};
+                throw VulkanError{"Pipeline cannot be created."};
         }
         return render_pipeline;
 }
@@ -383,7 +383,7 @@ vk::PipelineLayout create_compute_pipeline_layout(vk::Device device, vk::Descrip
         vk::PushConstantRange push_constant_range{};
         push_constant_range
                 .setOffset(0)
-                .setSize(sizeof(image_size))
+                .setSize(sizeof(ImageSize))
                 .setStageFlags(vk::ShaderStageFlagBits::eCompute);
         
         vk::PipelineLayoutCreateInfo pipeline_layout_info;
@@ -409,7 +409,7 @@ vk::Pipeline create_compute_pipeline(vk::Device device, vk::PipelineLayout pipel
         vk::Pipeline compute_pipeline;
         auto result =  device.createComputePipelines(nullptr, 1, &pipeline_info, nullptr, &compute_pipeline);
         if(result != vk::Result::eSuccess){
-                throw vulkan_display_exception{"Pipeline cannot be created."};
+                throw VulkanError{"Pipeline cannot be created."};
         }
         return compute_pipeline;
 }
@@ -419,8 +419,8 @@ vk::Pipeline create_compute_pipeline(vk::Device device, vk::PipelineLayout pipel
 
 namespace vulkan_display {
 
-void vulkan_display::init(vulkan_instance&& instance, VkSurfaceKHR surface, uint32_t initial_image_count,
-        window_changed_callback& window, uint32_t gpu_index, std::filesystem::path shaders_path, bool vsync, bool tearing_permitted) {
+void VulkanDisplay::init(VulkanInstance&& instance, VkSurfaceKHR surface, uint32_t initial_image_count,
+        WindowChangedCallback& window, uint32_t gpu_index, std::filesystem::path shaders_path, bool vsync, bool tearing_permitted) {
         assert(surface);
         this->window = &window;
         this->path_to_shaders = std::move(shaders_path);
@@ -463,7 +463,7 @@ void vulkan_display::init(vulkan_instance&& instance, VkSurfaceKHR surface, uint
         }
 }
 
-void vulkan_display::destroy_format_dependent_resources(){
+void VulkanDisplay::destroy_format_dependent_resources(){
         device.destroy(render_pipeline);
         device.destroy(render_pipeline_layout);
         device.destroy(descriptor_set_layout);
@@ -480,7 +480,7 @@ void vulkan_display::destroy_format_dependent_resources(){
         }
 }
 
-void vulkan_display::destroy() {
+void VulkanDisplay::destroy() {
         if (!destroyed) {
                 destroyed = true;
                 if (device) {
@@ -505,16 +505,16 @@ void vulkan_display::destroy() {
         }
 }
 
-bool vulkan_display::is_image_description_supported(image_description description) {
+bool VulkanDisplay::is_image_description_supported(ImageDescription description) {
         if (!is_yCbCr_supported() && is_yCbCr_format(description.format)) {
                 return false;
         }
         std::scoped_lock lock(device_mutex);
-        return transfer_image::is_image_description_supported(context.get_gpu(), description);
+        return TransferImageImpl::is_image_description_supported(context.get_gpu(), description);
 }
 
-void vulkan_display::record_graphics_commands(detail::per_frame_resources& frame_resources, 
-        transfer_image& transfer_image, uint32_t swapchain_image_id) 
+void VulkanDisplay::record_graphics_commands(PerFrameResources& frame_resources, 
+        TransferImageImpl& transfer_image, uint32_t swapchain_image_id)
 {
         vk::CommandBuffer cmd_buffer = frame_resources.command_buffer;
         cmd_buffer.reset(vk::CommandBufferResetFlags{});
@@ -556,8 +556,8 @@ void vulkan_display::record_graphics_commands(detail::per_frame_resources& frame
         cmd_buffer.end();
 }
 
-transfer_image& vulkan_display::acquire_transfer_image() {
-        transfer_image* result = nullptr;
+TransferImageImpl& VulkanDisplay::acquire_transfer_image() {
+        TransferImageImpl* result = nullptr;
         if (!available_images.empty()){
                 result = available_images.back();
                 available_images.pop_back();
@@ -572,7 +572,7 @@ transfer_image& vulkan_display::acquire_transfer_image() {
         return transfer_images.back();
 }
 
-image vulkan_display::acquire_image(image_description description) {
+TransferImage VulkanDisplay::acquire_image(ImageDescription description) {
         assert(description.size.width * description.size.height != 0);
         assert(description.format != vk::Format::eUndefined);
         if (!context.is_yCbCr_supported()) {
@@ -581,27 +581,27 @@ image vulkan_display::acquire_image(image_description description) {
                         if (get_vulkan_version() == VK_API_VERSION_1_0) {
                                 error_msg.append("\nVulkan 1.1 or higher is needed for YCbCr support."sv);
                         }
-                        throw vulkan_display_exception{error_msg};
+                        throw VulkanError{error_msg};
                 }
         }
-        transfer_image& transfer_image = acquire_transfer_image();
-        assert(transfer_image.get_id() != transfer_image::NO_ID);
+        TransferImageImpl& transfer_image = acquire_transfer_image();
+        assert(transfer_image.get_id() != TransferImageImpl::NO_ID);
 
         if (transfer_image.get_description() != description) {
                 std::scoped_lock device_lock(device_mutex);
                 transfer_image.recreate(context, description);
         }
         
-        return image{ transfer_image };
+        return TransferImage{ transfer_image };
 }
 
-void vulkan_display::copy_and_queue_image(std::byte* frame, image_description description) {
-        image image = acquire_image(description);
+void VulkanDisplay::copy_and_queue_image(std::byte* frame, ImageDescription description) {
+        TransferImage image = acquire_image(description);
         memcpy(image.get_memory_ptr(), frame, image.get_size().height * image.get_row_pitch());
         queue_image(image, false);
 }
 
-bool vulkan_display::queue_image(image image, bool discardable) {   
+bool VulkanDisplay::queue_image(TransferImage image, bool discardable) {
         // if image is discardable and the filled_img_queue is full
         if(!discardable){
                 filled_img_queue.wait_enqueue(image.get_transfer_image());
@@ -625,7 +625,7 @@ bool vulkan_display::queue_image(image image, bool discardable) {
         }*/
 }
 
-void vulkan_display::reconfigure(const transfer_image& transfer_image){
+void VulkanDisplay::reconfigure(const TransferImageImpl& transfer_image){
         auto image_format = transfer_image.get_description().format;
         if (image_format != current_image_description.format) {
                 log_msg("Recreating render_pipeline");
@@ -650,10 +650,10 @@ void vulkan_display::reconfigure(const transfer_image& transfer_image){
                         for(size_t i = 0; i < frame_resources.size(); i++){
                                 frame_resources[i].converted_image.init(
                                         context, 
-                                        image_description{transfer_image.get_description().size, vk::Format::eR8G8B8A8Unorm}, 
+                                        ImageDescription{transfer_image.get_description().size, vk::Format::eR8G8B8A8Unorm},
                                         vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled,
                                         vk::AccessFlagBits::eShaderWrite,
-                                        initial_image_data::undefined, memory_location::device_local);
+                                        InitialImageData::undefined, MemoryLocation::device_local);
 
                         }
                 }
@@ -674,7 +674,7 @@ void vulkan_display::reconfigure(const transfer_image& transfer_image){
                 { parameters.width, parameters.height }, current_image_description.size);
 }
 
-bool vulkan_display::display_queued_image() {
+bool VulkanDisplay::display_queued_image() {
         auto window_parameters = window->get_window_parameters();
         if (window_parameters.is_minimized()) {
                 discard_filled_image(filled_img_queue, available_img_queue);
@@ -696,7 +696,7 @@ bool vulkan_display::display_queued_image() {
                                 break;
                         }
                         else {
-                                throw vulkan_display_exception{"Waiting for fence failed."};
+                                throw VulkanError{"Waiting for fence failed."};
                         }
                 }
         }
@@ -707,13 +707,13 @@ bool vulkan_display::display_queued_image() {
         auto& commands = *free_frame_resources.back();
         free_frame_resources.pop_back();
 
-        transfer_image* transfer_image_ptr = nullptr;
+        TransferImageImpl* transfer_image_ptr = nullptr;
         bool dequeued = filled_img_queue.wait_dequeue_timed(transfer_image_ptr, waiting_time_for_filled_image);
         if (!dequeued || !transfer_image_ptr) {
                 return false;
         }
 
-        transfer_image& transfer_image = *transfer_image_ptr;
+        TransferImageImpl& transfer_image = *transfer_image_ptr;
         transfer_image.preprocess();
 
         std::unique_lock lock(device_mutex);
@@ -727,7 +727,7 @@ bool vulkan_display::display_queued_image() {
         {
                 swapchain_recreation_attempt++;
                 if (swapchain_recreation_attempt > 3) {
-                        throw vulkan_display_exception{"Cannot acquire swapchain image"}; 
+                        throw VulkanError{"Cannot acquire swapchain image"};
                 }
                 
                 auto window_parameters = window->get_window_parameters();
@@ -780,14 +780,14 @@ bool vulkan_display::display_queued_image() {
                 case vk::Result::eSuboptimalKHR: 
                         break;  
                 default: 
-                        throw vulkan_display_exception{"Error presenting image:"s + vk::to_string(present_result)};
+                        throw VulkanError{"Error presenting image:"s + vk::to_string(present_result)};
         }
         
-        rendered_images.emplace(rendered_image{&transfer_image, &commands});
+        rendered_images.emplace(RenderedImage{&transfer_image, &commands});
         return true;
 }
 
-void vulkan_display::window_parameters_changed(window_parameters new_parameters) {
+void VulkanDisplay::window_parameters_changed(WindowParameters new_parameters) {
         if (new_parameters != context.get_window_parameters() && !new_parameters.is_minimized()) {
                 std::scoped_lock lock{device_mutex};
                 context.recreate_swapchain(new_parameters, render_pass);

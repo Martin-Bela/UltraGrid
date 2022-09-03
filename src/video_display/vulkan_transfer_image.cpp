@@ -1,6 +1,6 @@
 /**
  * @file   video_display/vulkan_transfer_image.cpp
- * @author Martin Be¾a      <492789@mail.muni.cz>
+ * @author Martin Bela      <492789@mail.muni.cz>
  */
 /*
  * Copyright (c) 2021-2022 CESNET, z. s. p. o.
@@ -38,7 +38,8 @@
 #include "vulkan_transfer_image.hpp"
 
 using namespace vulkan_display_detail;
-namespace vkd = vulkan_display;
+using namespace vulkan_display;
+
 namespace {
 
 constexpr vk::DeviceSize add_padding(vk::DeviceSize size, vk::DeviceSize allignment) {
@@ -79,7 +80,7 @@ uint32_t get_memory_type(
         if (possible_memory_type != UINT32_MAX) {
                 return possible_memory_type;
         }
-        throw vulkan_display_exception{"No available memory for transfer images found."};
+        throw VulkanError{"No available memory for transfer images found."};
 }
 
 constexpr vk::ImageTiling image_tiling = vk::ImageTiling::eLinear;
@@ -89,7 +90,7 @@ constexpr vk::ImageCreateFlags image_create_flags = {};
 
 namespace vulkan_display_detail{
 
-bool transfer_image::is_image_description_supported(vk::PhysicalDevice gpu, vkd::image_description description) {
+bool TransferImageImpl::is_image_description_supported(vk::PhysicalDevice gpu, ImageDescription description) {
         vk::ImageFormatProperties properties;
         auto result = gpu.getImageFormatProperties(
                 description.format,
@@ -104,49 +105,49 @@ bool transfer_image::is_image_description_supported(vk::PhysicalDevice gpu, vkd:
                 case vk::Result::eErrorFormatNotSupported:
                         return false;
                 default:
-                        throw vulkan_display_exception{"Error queriing image properties."};
+                        throw VulkanError{"Error queriing image properties."};
         }
 
         return description.size.height <= properties.maxExtent.height
                 && description.size.width <= properties.maxExtent.width;
 }
 
-void transfer_image::init(vk::Device device, uint32_t id) {
+void TransferImageImpl::init(vk::Device device, uint32_t id) {
         this->id = id;
         vk::FenceCreateInfo fence_info{};
         is_available_fence = device.createFence(fence_info);
 }
 
-void image2D::init(vulkan_context& context,
-        vulkan_display::image_description description, vk::ImageUsageFlags usage, 
-        vk::AccessFlags initial_access, initial_image_data preinitialised, memory_location memory_location)
+void Image2D::init(VulkanContext& context,
+        vulkan_display::ImageDescription description, vk::ImageUsageFlags usage, 
+        vk::AccessFlags initial_access, InitialImageData preinitialised, MemoryLocation memory_location)
 {
         vk::ImageTiling tiling;
         vk::MemoryPropertyFlags requested_properties;
         vk::MemoryPropertyFlags optional_properties;
         
-        using mem_bits = vk::MemoryPropertyFlagBits;
-        if (memory_location == memory_location::host_local){
+        using MemBits = vk::MemoryPropertyFlagBits;
+        if (memory_location == MemoryLocation::host_local){
                 tiling = vk::ImageTiling::eLinear;
-                requested_properties = mem_bits::eHostVisible | mem_bits::eHostCoherent;
-                optional_properties = mem_bits::eHostCached;
+                requested_properties = MemBits::eHostVisible | MemBits::eHostCoherent;
+                optional_properties = MemBits::eHostCached;
         }
         else{
                 tiling = vk::ImageTiling::eOptimal;
                 requested_properties = {};
-                optional_properties = mem_bits::eDeviceLocal;
+                optional_properties = MemBits::eDeviceLocal;
         }
         this->init(context, description, usage, initial_access, preinitialised, tiling, requested_properties, optional_properties);
 }
 
-void image2D::init(vulkan_context& context, vkd::image_description description, vk::ImageUsageFlags usage, 
-        vk::AccessFlags initial_access, initial_image_data preinitialised, vk::ImageTiling tiling,
+void Image2D::init(VulkanContext& context, ImageDescription description, vk::ImageUsageFlags usage,
+        vk::AccessFlags initial_access, InitialImageData preinitialised, vk::ImageTiling tiling,
         vk::MemoryPropertyFlags requested_properties, vk::MemoryPropertyFlags optional_properties)
 {
         this->format = description.format;
         this->size = description.size;
         this->access = initial_access;
-        this->layout = preinitialised == initial_image_data::preinitialised ? 
+        this->layout = preinitialised == InitialImageData::preinitialised ? 
                 vk::ImageLayout::ePreinitialized : 
                 vk::ImageLayout::eUndefined;
         this->view = nullptr;
@@ -179,7 +180,7 @@ void image2D::init(vulkan_context& context, vkd::image_description description, 
         device.bindImageMemory(image, memory, 0);
 }
 
-void image2D::create_view(vk::Device device, vk::SamplerYcbcrConversion conversion) {
+void Image2D::create_view(vk::Device device, vk::SamplerYcbcrConversion conversion) {
         assert (!view);
         vk::ImageViewCreateInfo view_info = 
                 default_image_view_create_info(format);
@@ -190,7 +191,7 @@ void image2D::create_view(vk::Device device, vk::SamplerYcbcrConversion conversi
         view = device.createImageView(view_info);
 }
 
-void image2D::destroy(vk::Device device) {
+void Image2D::destroy(vk::Device device) {
         device.destroy(view);
         view = nullptr;
         device.destroy(image);
@@ -201,20 +202,18 @@ void image2D::destroy(vk::Device device) {
         }
 }
 
-void transfer_image::recreate(vulkan_context& context,
-        vkd::image_description description)
-{
+void TransferImageImpl::recreate(VulkanContext& context, ImageDescription description) {
         assert(id != NO_ID);
         image2D.destroy(context.get_device());
         
         auto device = context.get_device();
         
         image2D.init(context, description, vk::ImageUsageFlagBits::eSampled, vk::AccessFlagBits::eHostWrite,
-                initial_image_data::preinitialised, memory_location::host_local);
+                InitialImageData::preinitialised, MemoryLocation::host_local);
         
         void* void_ptr = device.mapMemory(image2D.memory, 0, image2D.byte_size);
         if (void_ptr == nullptr) {
-                throw vulkan_display_exception{"Image memory cannot be mapped."}; 
+                throw VulkanError{"Image memory cannot be mapped."};
         }
         ptr = reinterpret_cast<std::byte*>(void_ptr);
 
@@ -222,7 +221,7 @@ void transfer_image::recreate(vulkan_context& context,
         row_pitch = device.getImageSubresourceLayout(image2D.image, subresource).rowPitch;
 }
 
-vk::ImageMemoryBarrier  transfer_image::create_memory_barrier(
+vk::ImageMemoryBarrier  TransferImageImpl::create_memory_barrier(
         vk::ImageLayout new_layout, vk::AccessFlags new_access_mask,
         uint32_t src_queue_family_index, uint32_t dst_queue_family_index)
 {
@@ -245,7 +244,7 @@ vk::ImageMemoryBarrier  transfer_image::create_memory_barrier(
         return memory_barrier;
 }
 
-void transfer_image::prepare_for_rendering(vk::Device device, 
+void TransferImageImpl::prepare_for_rendering(vk::Device device, 
         vk::DescriptorSet descriptor_set, vk::Sampler sampler, vk::SamplerYcbcrConversion conversion) 
 {
         if (!image2D.view) {
@@ -269,15 +268,15 @@ void transfer_image::prepare_for_rendering(vk::Device device,
         device.updateDescriptorSets(descriptor_writes, nullptr);
 }
 
-void transfer_image::preprocess() {
+void TransferImageImpl::preprocess() {
         if (preprocess_fun) {
-                vulkan_display::image img{ *this };
+                vulkan_display::TransferImage img{ *this };
                 preprocess_fun(img);
                 img.set_process_function(nullptr);
         }
 }
 
-void transfer_image::destroy(vk::Device device) {
+void TransferImageImpl::destroy(vk::Device device) {
         device.unmapMemory(image2D.memory);
         image2D.destroy(device);
         device.destroy(is_available_fence);

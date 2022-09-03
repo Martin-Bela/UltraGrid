@@ -3,7 +3,7 @@
  * @author Lukas Hejtmanek  <xhejtman@ics.muni.cz>
  * @author Milos Liska      <xliska@fi.muni.cz>
  * @author Martin Pulec     <pulec@cesnet.cz>
- * @author Martin Be¾a      <492789@mail.muni.cz>
+ * @author Martin Bela      <492789@mail.muni.cz>
  */
  /*
   * Copyright (c) 2018-2021 CESNET, z. s. p. o.
@@ -119,13 +119,13 @@ void display_sdl2_new_message(module*);
 int display_sdl2_putf(void* state, video_frame* frame, long long timeout_ns);
 video_frame* display_sdl2_getf(void* state);
 
-class window_callback final : public vkd::window_changed_callback {
+class WindowCallback final : public vkd::WindowChangedCallback {
         SDL_Window* window = nullptr;
 public:
-        explicit window_callback(SDL_Window* window):
+        explicit WindowCallback(SDL_Window* window):
                 window{window} { }
         
-        vkd::window_parameters get_window_parameters() override {
+        vkd::WindowParameters get_window_parameters() override {
                 assert(window);
                 int width = 0;
                 int height = 0;
@@ -138,15 +138,15 @@ public:
         }
 };
 
-struct frame_mappings{
-        struct mapping{
+struct FrameMappings{
+        struct Mapping{
                 video_frame* frame;
-                vkd::image image;
+                vkd::TransferImage image;
         };
 
-        std::vector<mapping> mappings;
+        std::vector<Mapping> mappings;
 
-        video_frame* create_frame(vkd::image image){
+        video_frame* create_frame(vkd::TransferImage image){
                 for(auto& pair : mappings){
                         if(pair.image == nullptr){
                                 pair.image = image;
@@ -154,11 +154,11 @@ struct frame_mappings{
                         }
                 }
                 auto new_frame = vf_alloc(1);
-                mappings.emplace_back(mapping{new_frame, image});
+                mappings.emplace_back(Mapping{new_frame, image});
                 return new_frame;
         }
 
-        vkd::image get_image(video_frame* frame){
+        vkd::TransferImage get_image(video_frame* frame){
                 for(auto& pair : mappings){
                         if(pair.frame == frame){
                                 return pair.image;
@@ -168,7 +168,7 @@ struct frame_mappings{
                 return {};
         }
 
-        ~frame_mappings(){
+        ~FrameMappings(){
                 for(auto& pair : mappings){
                         vf_free(pair.frame);
                 }
@@ -191,9 +191,9 @@ struct state_vulkan_sdl2 {
         int height = 0;
         
         SDL_Window* window = nullptr;
-        std::unique_ptr<vkd::vulkan_display> vulkan = nullptr;
-        std::unique_ptr<::window_callback> window_callback = nullptr;
-        std::unique_ptr<::frame_mappings> frame_mappings = std::make_unique<::frame_mappings>();
+        std::unique_ptr<vkd::VulkanDisplay> vulkan = nullptr;
+        std::unique_ptr<WindowCallback> window_callback = nullptr;
+        std::unique_ptr<FrameMappings> frame_mappings = std::make_unique<::FrameMappings>();
         
         std::atomic<bool> should_exit = false;
         video_desc current_desc{};
@@ -433,7 +433,7 @@ void sdl2_print_displays() {
 }
 
 void print_gpus() {
-        vkd::vulkan_instance instance;
+        vkd::VulkanInstance instance;
         std::vector<const char*>required_extensions{};
         std::vector<std::pair<std::string, bool>> gpus{};
         try {
@@ -513,7 +513,7 @@ int display_sdl2_reconfigure(void* state, video_desc desc) {
  * stored splashscreen data in RGB format.
  */
 void draw_splashscreen(state_vulkan_sdl2& s) {
-        vkd::image image;
+        vkd::TransferImage image;
         try {
                 image = s.vulkan->acquire_image({splash_width, splash_height, vk::Format::eR8G8B8A8Srgb});
         } 
@@ -719,7 +719,7 @@ void* display_sdl2_init(module* parent, const char* fmt, unsigned int flags) {
                 log_msg(LOG_LEVEL_ERROR, MOD_NAME "Unable to create window : %s\n", SDL_GetError());
                 return nullptr;
         }
-        s->window_callback = std::make_unique<::window_callback>(s->window);
+        s->window_callback = std::make_unique<::WindowCallback>(s->window);
 
         uint32_t extension_count = 0;
         SDL_Vulkan_GetInstanceExtensions(s->window, &extension_count, nullptr);
@@ -733,7 +733,7 @@ void* display_sdl2_init(module* parent, const char* fmt, unsigned int flags) {
         path_to_shaders = path_to_shaders / "../share/ultragrid/vulkan_shaders";
         LOG(LOG_LEVEL_INFO) << MOD_NAME "Path to shaders: " << path_to_shaders << '\n';
         try {
-                vkd::vulkan_instance instance;
+                vkd::VulkanInstance instance;
                 auto logging_function =
                         [](std::string_view sv) { LOG(LOG_LEVEL_INFO) << MOD_NAME << sv << std::endl; };
                 instance.init(required_extensions, args.validation, logging_function);
@@ -759,7 +759,7 @@ void* display_sdl2_init(module* parent, const char* fmt, unsigned int flags) {
                         throw std::runtime_error("SDL cannot create surface.");
                 }
 #endif
-                s->vulkan = std::make_unique<vkd::vulkan_display>();
+                s->vulkan = std::make_unique<vkd::VulkanDisplay>();
                 s->vulkan->init(std::move(instance), surface, initial_frame_count, *s->window_callback, args.gpu_idx, path_to_shaders, args.vsync, args.tearing_permitted);
                 LOG(LOG_LEVEL_NOTICE) << MOD_NAME "Vulkan display initialised." << std::endl;
         }
@@ -800,7 +800,7 @@ constexpr std::array<std::pair<codec_t, vk::Format>, 6> codec_to_vulkan_format_m
         {DXT1, vk::Format::eBc1RgbSrgbBlock}
 }};
 
-vkd::image_description to_vkd_image_desc(const video_desc& ultragrid_desc) {
+vkd::ImageDescription to_vkd_image_desc(const video_desc& ultragrid_desc) {
         auto& mapping = codec_to_vulkan_format_mapping;
         codec_t searched_codec = ultragrid_desc.color_spec;
         auto iter = std::find_if(mapping.begin(), mapping.end(),
@@ -814,7 +814,7 @@ video_frame* display_sdl2_getf(void* state) {
         assert(s->mod.priv_magic == magic_vulkan_sdl2);
         
         const auto& desc = s->current_desc;
-        vulkan_display::image image;
+        vkd::TransferImage image;
         try {
                 image = s->vulkan->acquire_image(to_vkd_image_desc(desc));
         } 
@@ -837,11 +837,11 @@ int display_sdl2_putf(void* state, video_frame* frame, long long timeout_ns) {
 
         if (!frame) {
                 s->should_exit = true;
-                s->vulkan->queue_image(vkd::image{}, true);
+                s->vulkan->queue_image(vkd::TransferImage{}, true);
                 return 0;
         }
 
-        vkd::image image = s->frame_mappings->get_image(frame);
+        vkd::TransferImage image = s->frame_mappings->get_image(frame);
 
         if (timeout_ns == PUTF_DISCARD) {
                 try {
@@ -852,7 +852,7 @@ int display_sdl2_putf(void* state, video_frame* frame, long long timeout_ns) {
         }
         
         if (s->deinterlace && !vkd::is_compressed_format(image.get_description().format)) {
-                image.set_process_function([](vkd::image& image) {
+                image.set_process_function([](vkd::TransferImage& image) {
                         vc_deinterlace(reinterpret_cast<unsigned char*>(image.get_memory_ptr()),
                                 image.get_row_pitch(),
                                 image.get_size().height);
@@ -903,7 +903,7 @@ int display_sdl2_get_property(void* state, int property, void* val, size_t* len)
                         }
                         *len = sizeof(int);
 
-                        vkd::image image;
+                        vkd::TransferImage image;
                         const auto& desc = s->current_desc;
                         assert(s->current_desc.width != 0);
                         try {

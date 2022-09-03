@@ -1,6 +1,6 @@
 /**
  * @file   video_display/vulkan_transfer_image.cpp
- * @author Martin Be¾a      <492789@mail.muni.cz>
+ * @author Martin Bela      <492789@mail.muni.cz>
  */
 /*
  * Copyright (c) 2021-2022 CESNET, z. s. p. o.
@@ -41,42 +41,42 @@
 
 namespace vulkan_display {
 
-struct image_description {
+struct ImageDescription {
         vk::Extent2D size{};
         vk::Format format{};
 
-        image_description() = default;
-        image_description(vk::Extent2D size, vk::Format format) :
+        ImageDescription() = default;
+        ImageDescription(vk::Extent2D size, vk::Format format) :
                 size{ size }, format{ format } { }
-        image_description(uint32_t width, uint32_t height, vk::Format format) :
-                image_description{ vk::Extent2D{width, height}, format } { }
+        ImageDescription(uint32_t width, uint32_t height, vk::Format format) :
+                ImageDescription{ vk::Extent2D{width, height}, format } { }
 
-        bool operator==(const image_description& other) const {
+        bool operator==(const ImageDescription& other) const {
                 return size.width == other.size.width 
                         && size.height == other.size.height 
                         && format == other.format;
         }
 
-        bool operator!=(const image_description& other) const {
+        bool operator!=(const ImageDescription& other) const {
                 return !(*this == other);
         }
 };
 
-class image;
+class TransferImage;
 
 } // vulkan_display-----------------------------------------
 
 namespace vulkan_display_detail {
 
-enum class memory_location{
+enum class MemoryLocation{
         device_local, host_local        
 };
 
-enum class initial_image_data{
+enum class InitialImageData{
         preinitialised, undefined
 };
 
-class image2D{
+class Image2D{
 public:
         vk::DeviceMemory memory{};
         vk::Image image{};
@@ -90,34 +90,34 @@ public:
         vk::Extent2D size{};
         vk::Format format{};
 public:
-        void init(vulkan_context& context,
-                vulkan_display::image_description description, vk::ImageUsageFlags usage, 
-                vk::AccessFlags initial_access, initial_image_data preinitialised, memory_location memory_location);
+        void init(VulkanContext& context,
+                vulkan_display::ImageDescription description, vk::ImageUsageFlags usage,
+                vk::AccessFlags initial_access, InitialImageData preinitialised, MemoryLocation memory_location);
 
-        void init(vulkan_context& context,
-                vulkan_display::image_description description, vk::ImageUsageFlags usage, 
-                vk::AccessFlags initial_access, initial_image_data preinitialised, vk::ImageTiling tiling,
+        void init(VulkanContext& context,
+                vulkan_display::ImageDescription description, vk::ImageUsageFlags usage,
+                vk::AccessFlags initial_access, InitialImageData preinitialised, vk::ImageTiling tiling,
                 vk::MemoryPropertyFlags requested_properties, vk::MemoryPropertyFlags optional_properties);
 
         void create_view(vk::Device device, vk::SamplerYcbcrConversion conversion);
         
         void destroy(vk::Device device);
 public:
-        vulkan_display::image_description get_description() const { return {size, format}; }
+        vulkan_display::ImageDescription get_description() const { return {size, format}; }
 };
 
-class transfer_image {
-        image2D image2D;
+class TransferImageImpl {
+        Image2D image2D;
         uint32_t id = NO_ID;
         std::byte* ptr = nullptr;
 
         vk::DeviceSize row_pitch = 0;
 
-        using preprocess_function = std::function<void(vulkan_display::image& image)>;
-        preprocess_function preprocess_fun{ nullptr };
+        using PreprocessFunction = std::function<void(vulkan_display::TransferImage& image)>;
+        PreprocessFunction preprocess_fun{ nullptr };
         
 public:
-        friend class vulkan_display::image;
+        friend class vulkan_display::TransferImage;
 
         static constexpr uint32_t NO_ID = UINT32_MAX;
 
@@ -125,13 +125,13 @@ public:
 
         uint32_t get_id() { return id; }
         
-        static bool is_image_description_supported(vk::PhysicalDevice gpu, vulkan_display::image_description description);
+        static bool is_image_description_supported(vk::PhysicalDevice gpu, vulkan_display::ImageDescription description);
 
         void init(vk::Device device, uint32_t id);
 
-        void recreate(vulkan_context& context, vulkan_display::image_description description);
+        void recreate(VulkanContext& context, vulkan_display::ImageDescription description);
 
-        vulkan_display::image_description get_description() const { return image2D.get_description(); }
+        vulkan_display::ImageDescription get_description() const { return image2D.get_description(); }
 
         vk::ImageMemoryBarrier create_memory_barrier(
                 vk::ImageLayout new_layout,
@@ -146,8 +146,8 @@ public:
 
         void destroy(vk::Device device);
 
-        transfer_image() = default;
-        transfer_image(vk::Device device, uint32_t id) {
+        TransferImageImpl() = default;
+        TransferImageImpl(vk::Device device, uint32_t id) {
                 init(device, id);
         }
 };
@@ -159,17 +159,17 @@ namespace vulkan_display {
 
 namespace detail = vulkan_display_detail;
 
-class image {
+class TransferImage {
         
-        detail::transfer_image* transfer_image = nullptr;
+        detail::TransferImageImpl* transfer_image = nullptr;
 public:
-        image() = default;
-        image(std::nullptr_t){}
+        TransferImage() = default;
+        TransferImage(std::nullptr_t){}
 
-        explicit image(detail::transfer_image& image) :
+        explicit TransferImage(detail::TransferImageImpl& image) :
                 transfer_image{ &image }
         { 
-                assert(image.id != detail::transfer_image::NO_ID);
+                assert(image.id != detail::TransferImageImpl::NO_ID);
         }
 
         uint32_t get_id() {
@@ -182,7 +182,7 @@ public:
                 return transfer_image->ptr;
         }
 
-        image_description get_description() {
+        ImageDescription get_description() {
                 assert(transfer_image);
                 return transfer_image->image2D.get_description();
         }
@@ -196,15 +196,15 @@ public:
                 return transfer_image->image2D.size;
         }
 
-        vulkan_display_detail::transfer_image* get_transfer_image() {
+        vulkan_display_detail::TransferImageImpl* get_transfer_image() {
                 return transfer_image;
         }
 
-        void set_process_function(std::function<void(image& image)> function) {
+        void set_process_function(std::function<void(TransferImage& image)> function) {
                 transfer_image->preprocess_fun = std::move(function);
         }
 
-        bool operator==(image other){
+        bool operator==(TransferImage other){
                 return transfer_image == other.transfer_image;
         }
 };
