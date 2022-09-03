@@ -451,15 +451,15 @@ void VulkanDisplay::init(VulkanInstance&& instance, VkSurfaceKHR surface, uint32
 
         auto command_buffers = create_command_buffers(device, command_pool, frame_resources.size());
         for (size_t i = 0; i < frame_resources.size(); i++){
-                auto& commands = frame_resources[i];
-                commands.image_acquired_semaphore = create_semaphore(device);
-                commands.image_rendered_semaphore = create_semaphore(device);
-                commands.command_buffer = command_buffers[i];
+                auto& resources = frame_resources[i];
+                resources.image_acquired_semaphore = create_semaphore(device);
+                resources.image_rendered_semaphore = create_semaphore(device);
+                resources.command_buffer = command_buffers[i];
         }
 
         free_frame_resources.reserve(frame_resources.size());
-        for(auto& command: frame_resources){
-                free_frame_resources.emplace_back(&command);
+        for(auto& resources: frame_resources){
+                free_frame_resources.emplace_back(&resources);
         }
 }
 
@@ -495,9 +495,9 @@ void VulkanDisplay::destroy() {
                         device.destroy(fragment_shader);
                         device.destroy(vertex_shader);
                         device.destroy(regular_sampler);
-                        for (auto& commands : frame_resources) {
-                                device.destroy(commands.image_acquired_semaphore);
-                                device.destroy(commands.image_rendered_semaphore);
+                        for (auto& resources : frame_resources) {
+                                device.destroy(resources.image_acquired_semaphore);
+                                device.destroy(resources.image_rendered_semaphore);
                         }
                         destroy_format_dependent_resources();
                 }
@@ -642,7 +642,9 @@ void VulkanDisplay::reconfigure(const TransferImageImpl& transfer_image){
                         yCbCr_conversion = nullptr;
                         yCbCr_sampler = nullptr;
                 }
+                format_conversion_enabled = false;
                 if(image_format == vk::Format::eR8G8B8A8Unorm){
+                        format_conversion_enabled = true;
                         conversion_shader = create_shader(path_to_shaders / "identity.spv", device);
                         conversion_desc_set_layout = create_conversion_descriptor_set_layout(device);
                         conversion_pipeline_layout = create_compute_pipeline_layout(device, conversion_desc_set_layout);
@@ -654,7 +656,6 @@ void VulkanDisplay::reconfigure(const TransferImageImpl& transfer_image){
                                         vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled,
                                         vk::AccessFlagBits::eShaderWrite,
                                         InitialImageData::undefined, MemoryLocation::device_local);
-
                         }
                 }
 
@@ -704,7 +705,7 @@ bool VulkanDisplay::display_queued_image() {
         if(free_frame_resources.empty()){
                 return false;
         }
-        auto& commands = *free_frame_resources.back();
+        auto& resources = *free_frame_resources.back();
         free_frame_resources.pop_back();
 
         TransferImageImpl* transfer_image_ptr = nullptr;
@@ -721,7 +722,7 @@ bool VulkanDisplay::display_queued_image() {
                 reconfigure(transfer_image);
         }
 
-        uint32_t swapchain_image_id = context.acquire_next_swapchain_image(commands.image_acquired_semaphore);
+        uint32_t swapchain_image_id = context.acquire_next_swapchain_image(resources.image_acquired_semaphore);
         int swapchain_recreation_attempt = 0;
         while (swapchain_image_id == swapchain_image_out_of_date || swapchain_image_id == swapchain_image_timeout) 
         {
@@ -741,23 +742,23 @@ bool VulkanDisplay::display_queued_image() {
                         { window_parameters.width, window_parameters.height },
                         current_image_description.size);
                 
-                swapchain_image_id = context.acquire_next_swapchain_image(commands.image_acquired_semaphore);
+                swapchain_image_id = context.acquire_next_swapchain_image(resources.image_acquired_semaphore);
         }
         transfer_image.prepare_for_rendering(device, 
-                commands.render_descriptor_set, current_sampler(), yCbCr_conversion);
+                resources.render_descriptor_set, current_sampler(), yCbCr_conversion);
         lock.unlock();
 
-        record_graphics_commands(commands, transfer_image, swapchain_image_id);
+        record_graphics_commands(resources, transfer_image, swapchain_image_id);
         std::vector<vk::PipelineStageFlags> wait_masks{ vk::PipelineStageFlagBits::eColorAttachmentOutput };
         vk::SubmitInfo submit_info{};
         submit_info
                 .setCommandBufferCount(1)
-                .setPCommandBuffers(&commands.command_buffer)
+                .setPCommandBuffers(&resources.command_buffer)
                 .setPWaitDstStageMask(wait_masks.data())
                 .setWaitSemaphoreCount(1)
-                .setPWaitSemaphores(&commands.image_acquired_semaphore)
+                .setPWaitSemaphores(&resources.image_acquired_semaphore)
                 .setSignalSemaphoreCount(1)
-                .setPSignalSemaphores(&commands.image_rendered_semaphore);
+                .setPSignalSemaphores(&resources.image_rendered_semaphore);
 
         context.get_queue().submit(submit_info, transfer_image.is_available_fence);
 
@@ -768,7 +769,7 @@ bool VulkanDisplay::display_queued_image() {
                 .setSwapchainCount(1)
                 .setPSwapchains(&swapchain)
                 .setWaitSemaphoreCount(1)
-                .setPWaitSemaphores(&commands.image_rendered_semaphore);
+                .setPWaitSemaphores(&resources.image_rendered_semaphore);
 
         auto present_result = context.get_queue().presentKHR(&present_info);
 
@@ -783,7 +784,7 @@ bool VulkanDisplay::display_queued_image() {
                         throw VulkanError{"Error presenting image:"s + vk::to_string(present_result)};
         }
         
-        rendered_images.emplace(RenderedImage{&transfer_image, &commands});
+        rendered_images.emplace(RenderedImage{&transfer_image, &resources});
         return true;
 }
 

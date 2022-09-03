@@ -94,6 +94,7 @@
 #include <cstring>
 #include <limits>
 #include <mutex>
+#include <memory>
 #include <queue>
 #include <string>
 #include <string_view>
@@ -191,10 +192,12 @@ struct state_vulkan_sdl2 {
         int height = 0;
         
         SDL_Window* window = nullptr;
-        std::unique_ptr<vkd::VulkanDisplay> vulkan = nullptr;
-        std::unique_ptr<WindowCallback> window_callback = nullptr;
-        std::unique_ptr<FrameMappings> frame_mappings = std::make_unique<::FrameMappings>();
-        
+
+        // Use raw pointers because std::unique_ptr might not have standard layout
+        vkd::VulkanDisplay* vulkan = nullptr;
+        WindowCallback* window_callback = nullptr;
+        FrameMappings* frame_mappings = new FrameMappings();
+
         std::atomic<bool> should_exit = false;
         video_desc current_desc{};
 
@@ -719,7 +722,7 @@ void* display_sdl2_init(module* parent, const char* fmt, unsigned int flags) {
                 log_msg(LOG_LEVEL_ERROR, MOD_NAME "Unable to create window : %s\n", SDL_GetError());
                 return nullptr;
         }
-        s->window_callback = std::make_unique<::WindowCallback>(s->window);
+        s->window_callback = new WindowCallback(s->window);
 
         uint32_t extension_count = 0;
         SDL_Vulkan_GetInstanceExtensions(s->window, &extension_count, nullptr);
@@ -759,7 +762,7 @@ void* display_sdl2_init(module* parent, const char* fmt, unsigned int flags) {
                         throw std::runtime_error("SDL cannot create surface.");
                 }
 #endif
-                s->vulkan = std::make_unique<vkd::VulkanDisplay>();
+                s->vulkan = new vkd::VulkanDisplay{};
                 s->vulkan->init(std::move(instance), surface, initial_frame_count, *s->window_callback, args.gpu_idx, path_to_shaders, args.vsync, args.tearing_permitted);
                 LOG(LOG_LEVEL_NOTICE) << MOD_NAME "Vulkan display initialised." << std::endl;
         }
@@ -779,7 +782,13 @@ void display_sdl2_done(void* state) {
                 s->vulkan->destroy();
         }
         catch (std::exception& e) { log_and_exit_uv(e); }
+
+        delete s->vulkan;
         s->vulkan = nullptr;
+        delete s->frame_mappings;
+        s->frame_mappings = nullptr;
+        delete s->window_callback;
+        s->window_callback = nullptr;
 
         if (s->window) {
                 SDL_DestroyWindow(s->window);
