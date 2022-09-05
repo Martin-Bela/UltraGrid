@@ -80,7 +80,8 @@ struct PerFrameResources{
         vk::DescriptorSet render_descriptor_set;
 
         Image2D converted_image;
-        vk::DescriptorSet conversion_descriptor_set;
+        vk::DescriptorSet conversion_source_descriptor_set;
+        vk::DescriptorSet conversion_destination_descriptor_set;
 };
 
 
@@ -165,6 +166,7 @@ class VulkanDisplay {
         bool minimalised = false;
         bool destroyed = false;
 private:
+        void bind_transfer_image(TransferImageImpl& image, detail::PerFrameResources& resources);
         //void create_transfer_image(transfer_image*& result, image_description description);
         [[nodiscard]] TransferImageImpl& acquire_transfer_image();
 

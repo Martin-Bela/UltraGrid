@@ -99,7 +99,7 @@ public:
                 vk::AccessFlags initial_access, InitialImageData preinitialised, vk::ImageTiling tiling,
                 vk::MemoryPropertyFlags requested_properties, vk::MemoryPropertyFlags optional_properties);
 
-        void create_view(vk::Device device, vk::SamplerYcbcrConversion conversion);
+        vk::ImageView get_image_view(vk::Device device, vk::SamplerYcbcrConversion conversion);
         
         void destroy(vk::Device device);
 public:
@@ -139,8 +139,9 @@ public:
                 uint32_t src_queue_family_index = VK_QUEUE_FAMILY_IGNORED,
                 uint32_t dst_queue_family_index = VK_QUEUE_FAMILY_IGNORED);
 
-        void prepare_for_rendering(vk::Device device, vk::DescriptorSet descriptor_set, 
-                vk::Sampler sampler, vk::SamplerYcbcrConversion conversion);
+        vk::ImageView get_image_view(vk::Device device, vk::SamplerYcbcrConversion conversion) {
+            return image2D.get_image_view(device, conversion);
+        }
 
         void preprocess();
 

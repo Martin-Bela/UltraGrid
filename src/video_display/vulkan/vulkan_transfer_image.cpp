@@ -180,15 +180,17 @@ void Image2D::init(VulkanContext& context, ImageDescription description, vk::Ima
         device.bindImageMemory(image, memory, 0);
 }
 
-void Image2D::create_view(vk::Device device, vk::SamplerYcbcrConversion conversion) {
-        assert (!view);
-        vk::ImageViewCreateInfo view_info = 
-                default_image_view_create_info(format);
-        view_info.setImage(image);
+vk::ImageView Image2D::get_image_view(vk::Device device, vk::SamplerYcbcrConversion conversion) {
+        if(!view){
+                vk::ImageViewCreateInfo view_info =
+                        default_image_view_create_info(format);
+                view_info.setImage(image);
 
-        vk::SamplerYcbcrConversionInfo yCbCr_info{ conversion };
-        view_info.setPNext(conversion ? &yCbCr_info : nullptr);
-        view = device.createImageView(view_info);
+                vk::SamplerYcbcrConversionInfo yCbCr_info{ conversion };
+                view_info.setPNext(conversion ? &yCbCr_info : nullptr);
+                view = device.createImageView(view_info);
+        }
+        return view;
 }
 
 void Image2D::destroy(vk::Device device) {
@@ -242,30 +244,6 @@ vk::ImageMemoryBarrier  TransferImageImpl::create_memory_barrier(
         image2D.layout = new_layout;
         image2D.access = new_access_mask;
         return memory_barrier;
-}
-
-void TransferImageImpl::prepare_for_rendering(vk::Device device, 
-        vk::DescriptorSet descriptor_set, vk::Sampler sampler, vk::SamplerYcbcrConversion conversion) 
-{
-        if (!image2D.view) {
-                image2D.create_view(device, conversion);
-        }
-        vk::DescriptorImageInfo description_image_info;
-        description_image_info
-                .setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal)
-                .setSampler(sampler)
-                .setImageView(image2D.view);
-
-        vk::WriteDescriptorSet descriptor_writes{};
-        descriptor_writes
-                .setDstBinding(1)
-                .setDstArrayElement(0)
-                .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
-                .setPImageInfo(&description_image_info)
-                .setDescriptorCount(1)
-                .setDstSet(descriptor_set);
-
-        device.updateDescriptorSets(descriptor_writes, nullptr);
 }
 
 void TransferImageImpl::preprocess() {

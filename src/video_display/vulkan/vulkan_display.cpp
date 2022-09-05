@@ -195,32 +195,21 @@ vk::RenderPass create_render_pass(vk::Device device, vk::Format swapchain_image_
 }
 
 vk::DescriptorPool create_descriptor_pool(vk::Device device, size_t descriptor_count){
-        vk::DescriptorPoolSize descriptor_sizes{};
-        descriptor_sizes
+        std::array<vk::DescriptorPoolSize,2> descriptor_sizes{};
+        descriptor_sizes[0]
                 .setType(vk::DescriptorType::eCombinedImageSampler)
                 .setDescriptorCount(descriptor_count);
+
+        descriptor_sizes[1]
+                .setType(vk::DescriptorType::eStorageImage)
+                .setDescriptorCount(descriptor_count * 2);
+
         vk::DescriptorPoolCreateInfo pool_info{};
         pool_info
-                .setPoolSizeCount(1)
-                .setPPoolSizes(&descriptor_sizes)
-                .setMaxSets(descriptor_count);
+                .setPoolSizeCount(descriptor_sizes.size())
+                .setPPoolSizes(descriptor_sizes.data())
+                .setMaxSets(descriptor_count * 3);
         return device.createDescriptorPool(pool_info);
-}
-
-vk::DescriptorSetLayout create_render_descriptor_set_layout(vk::Device device, vk::Sampler sampler) {
-        vk::DescriptorSetLayoutBinding descriptor_set_layout_bindings;
-        descriptor_set_layout_bindings
-                .setBinding(1)
-                .setDescriptorCount(1)
-                .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
-                .setStageFlags(vk::ShaderStageFlagBits::eFragment)
-                .setPImmutableSamplers(&sampler);
-
-        vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_info{};
-        descriptor_set_layout_info
-                .setBindings(descriptor_set_layout_bindings);
-
-        return device.createDescriptorSetLayout(descriptor_set_layout_info);
 }
 
 std::vector<vk::DescriptorSet> allocate_description_sets(vk::Device device, vk::DescriptorPool pool, vk::DescriptorSetLayout layout, size_t descriptor_count) {
@@ -358,23 +347,26 @@ vk::Pipeline create_render_pipeline(vk::Device device, vk::PipelineLayout render
         return render_pipeline;
 }
 
-vk::DescriptorSetLayout create_conversion_descriptor_set_layout(vk::Device device) {
-        std::array<vk::DescriptorSetLayoutBinding, 2> descriptor_set_layout_bindings;
-        descriptor_set_layout_bindings[0]
-                .setBinding(0)
-                .setDescriptorCount(1)
-                .setDescriptorType(vk::DescriptorType::eStorageImage)
-                .setStageFlags(vk::ShaderStageFlagBits::eCompute);
+struct Binding{
+        vk::DescriptorType type;
+        vk::ShaderStageFlags stages;
+        vk::Sampler sampler = nullptr;
+};
 
-        descriptor_set_layout_bindings[1]
-                .setBinding(1)
+vk::DescriptorSetLayout create_descriptor_set_layout(vk::Device device, std::vector<Binding> bindings) {
+        std::vector<vk::DescriptorSetLayoutBinding> descriptor_set_layout_bindings(bindings.size());
+        for(size_t i = 0; i < bindings.size(); i++){
+            descriptor_set_layout_bindings[i]
+                .setBinding(i)
                 .setDescriptorCount(1)
-                .setDescriptorType(vk::DescriptorType::eStorageImage)
-                .setStageFlags(vk::ShaderStageFlagBits::eCompute);
-
+                .setDescriptorType(bindings[i].type)
+                .setStageFlags(bindings[i].stages)
+                .setPImmutableSamplers(&bindings[i].sampler);
+        }
         vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_info{};
         descriptor_set_layout_info
-                .setBindings(descriptor_set_layout_bindings);
+                .setBindingCount(descriptor_set_layout_bindings.size())
+                .setPBindings(descriptor_set_layout_bindings.data());
 
         return device.createDescriptorSetLayout(descriptor_set_layout_info);
 }
@@ -388,8 +380,10 @@ vk::PipelineLayout create_compute_pipeline_layout(vk::Device device, vk::Descrip
         
         vk::PipelineLayoutCreateInfo pipeline_layout_info;
         pipeline_layout_info
-                .setSetLayouts(descriptor_set_layout)
-                .setPushConstantRanges(push_constant_range);
+                .setSetLayoutCount(1)
+                .setPSetLayouts(&descriptor_set_layout)
+                .setPushConstantRangeCount(1)
+                .setPPushConstantRanges(&push_constant_range);
 
         return device.createPipelineLayout(pipeline_layout_info);
 }
@@ -412,6 +406,58 @@ vk::Pipeline create_compute_pipeline(vk::Device device, vk::PipelineLayout pipel
                 throw VulkanError{"Pipeline cannot be created."};
         }
         return compute_pipeline;
+}
+
+template<size_t frame_count>
+void bind_conversion_images(vk::Device device, vk::Sampler sampler,
+        std::array<PerFrameResources, frame_count> frame_resources)
+{
+        std::vector<vk::DescriptorImageInfo> descriptor_image_infos;
+        descriptor_image_infos.reserve(frame_resources.size() * 2);
+
+        std::vector<vk::WriteDescriptorSet> descriptor_writes;
+        descriptor_writes.reserve(frame_resources.size() * 2);
+
+
+        vk::DescriptorImageInfo store_image_info;
+        store_image_info
+                .setImageLayout(vk::ImageLayout::eGeneral);
+
+        vk::WriteDescriptorSet store_write{};
+        store_write
+                .setDstBinding(1)
+                .setDescriptorType(vk::DescriptorType::eStorageImage)
+                .setDescriptorCount(1);
+
+        vk::DescriptorImageInfo sample_image_info;
+        sample_image_info
+                .setSampler(sampler)
+                .setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
+
+        vk::WriteDescriptorSet sample_write{};
+        sample_write
+                .setDstBinding(0)
+                .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
+                .setDescriptorCount(1);
+
+
+        for(size_t i=0; i < frame_resources.size(); i++){
+                auto view = frame_resources[i].converted_image.get_image_view(device, nullptr);
+                store_image_info.imageView = view;
+                sample_image_info.imageView = view;
+
+                store_write.setDstSet(frame_resources[i].conversion_destination_descriptor_set);
+                sample_write.setDstSet(frame_resources[i].render_descriptor_set);
+
+                descriptor_image_infos.push_back(store_image_info);
+                store_write.setPImageInfo(&descriptor_image_infos.back());
+                descriptor_writes.push_back(store_write);
+
+                descriptor_image_infos.push_back(sample_image_info);
+                sample_write.setPImageInfo(&descriptor_image_infos.back());
+                descriptor_writes.push_back(sample_write);
+        }
+        device.updateDescriptorSets(descriptor_writes, nullptr);
 }
 
 } //namespace -------------------------------------------------------------
@@ -511,6 +557,30 @@ bool VulkanDisplay::is_image_description_supported(ImageDescription description)
         }
         std::scoped_lock lock(device_mutex);
         return TransferImageImpl::is_image_description_supported(context.get_gpu(), description);
+}
+
+void VulkanDisplay::bind_transfer_image(TransferImageImpl& transfer_image, PerFrameResources& resources) {
+    auto view = transfer_image.get_image_view(device, yCbCr_conversion);
+
+    auto image_layout = vk::ImageLayout::eShaderReadOnlyOptimal;
+    auto descriptor_type = format_conversion_enabled ? vk::DescriptorType::eStorageImage : vk::DescriptorType::eCombinedImageSampler;
+    auto descriptor_set = format_conversion_enabled ? resources.conversion_source_descriptor_set : resources.render_descriptor_set;
+
+    vk::DescriptorImageInfo description_image_info;
+    description_image_info
+            .setImageLayout(image_layout)
+            .setSampler(current_sampler())
+            .setImageView(view);
+
+    vk::WriteDescriptorSet descriptor_writes{};
+    descriptor_writes
+            .setDstBinding(0)
+            .setDescriptorType(descriptor_type)
+            .setPImageInfo(&description_image_info)
+            .setDescriptorCount(1)
+            .setDstSet(descriptor_set);
+
+    device.updateDescriptorSets(descriptor_writes, nullptr);
 }
 
 void VulkanDisplay::record_graphics_commands(PerFrameResources& frame_resources, 
@@ -643,10 +713,12 @@ void VulkanDisplay::reconfigure(const TransferImageImpl& transfer_image){
                         yCbCr_sampler = nullptr;
                 }
                 format_conversion_enabled = false;
-                if(image_format == vk::Format::eR8G8B8A8Unorm){
+                if(false && image_format == vk::Format::eR8G8B8A8Unorm){
                         format_conversion_enabled = true;
                         conversion_shader = create_shader(path_to_shaders / "identity.spv", device);
-                        conversion_desc_set_layout = create_conversion_descriptor_set_layout(device);
+                        conversion_desc_set_layout = create_descriptor_set_layout(device, {
+                               {vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute}
+                        });
                         conversion_pipeline_layout = create_compute_pipeline_layout(device, conversion_desc_set_layout);
                         conversion_pipeline = create_compute_pipeline(device, conversion_pipeline_layout, conversion_shader);
                         for(size_t i = 0; i < frame_resources.size(); i++){
@@ -656,10 +728,22 @@ void VulkanDisplay::reconfigure(const TransferImageImpl& transfer_image){
                                         vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled,
                                         vk::AccessFlagBits::eShaderWrite,
                                         InitialImageData::undefined, MemoryLocation::device_local);
+                                auto conversion_descriptor_sets = allocate_description_sets(device, descriptor_pool,
+                                        conversion_desc_set_layout, frame_resources.size() * 2);
+                                size_t desc_index = 0;
+                                for(size_t i = 0; i < frame_resources.size(); i++){
+                                        auto& resources = frame_resources[i];
+                                        resources.conversion_source_descriptor_set = conversion_descriptor_sets[desc_index];
+                                        desc_index++;
+                                        resources.conversion_destination_descriptor_set = conversion_descriptor_sets[desc_index];
+                                        desc_index++;
+                                }
+                                bind_conversion_images(device, regular_sampler, frame_resources);
                         }
                 }
-
-                descriptor_set_layout = create_render_descriptor_set_layout(device, yCbCr_sampler ? yCbCr_sampler : regular_sampler );
+                descriptor_set_layout = create_descriptor_set_layout(device, {
+                    {vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, current_sampler()}
+                });
                 render_pipeline_layout = create_render_pipeline_layout(device, descriptor_set_layout);
                 render_pipeline = create_render_pipeline(device, render_pipeline_layout, render_pass, vertex_shader, fragment_shader);
                 auto descriptor_sets = allocate_description_sets(device, descriptor_pool, 
@@ -744,8 +828,8 @@ bool VulkanDisplay::display_queued_image() {
                 
                 swapchain_image_id = context.acquire_next_swapchain_image(resources.image_acquired_semaphore);
         }
-        transfer_image.prepare_for_rendering(device, 
-                resources.render_descriptor_set, current_sampler(), yCbCr_conversion);
+
+        bind_transfer_image(transfer_image, resources);
         lock.unlock();
 
         record_graphics_commands(resources, transfer_image, swapchain_image_id);
