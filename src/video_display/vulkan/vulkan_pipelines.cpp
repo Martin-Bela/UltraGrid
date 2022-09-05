@@ -134,7 +134,7 @@ void ConversionPipeline::record_commands(vk::CommandBuffer cmd_buffer, ImageSize
 
         cmd_buffer.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
         cmd_buffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipeline_layout, 0, descriptor_sets, nullptr);
-        cmd_buffer.dispatch(image_size.width, image_size.height, 1); //todo
+        cmd_buffer.dispatch(image_size.width / 16, image_size.height / 16, 1);
 }
 
 } //namespace vulkan_display_detail
@@ -364,7 +364,7 @@ void RenderPipeline::record_commands(vk::CommandBuffer cmd_buffer, vk::Descripto
         cmd_buffer.pushConstants(pipeline_layout, vk::ShaderStageFlagBits::eFragment, 0, sizeof(render_area), &render_area);
         cmd_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
                 pipeline_layout, 0, image, nullptr);
-        cmd_buffer.draw(6, 1, 0, 0);
+        cmd_buffer.draw(3, 1, 0, 0);
 
         cmd_buffer.endRenderPass();
 }
