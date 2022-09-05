@@ -182,6 +182,7 @@ void Image2D::init(VulkanContext& context, ImageDescription description, vk::Ima
 
 vk::ImageView Image2D::get_image_view(vk::Device device, vk::SamplerYcbcrConversion conversion) {
         if(!view){
+                assert(image);
                 vk::ImageViewCreateInfo view_info =
                         default_image_view_create_info(format);
                 view_info.setImage(image);
@@ -209,7 +210,7 @@ void TransferImageImpl::recreate(VulkanContext& context, ImageDescription descri
         image2D.destroy(context.get_device());
         
         auto device = context.get_device();
-        
+
         image2D.init(context, description, vk::ImageUsageFlagBits::eSampled, vk::AccessFlagBits::eHostWrite,
                 InitialImageData::preinitialised, MemoryLocation::host_local);
         
@@ -223,16 +224,16 @@ void TransferImageImpl::recreate(VulkanContext& context, ImageDescription descri
         row_pitch = device.getImageSubresourceLayout(image2D.image, subresource).rowPitch;
 }
 
-vk::ImageMemoryBarrier  TransferImageImpl::create_memory_barrier(
+vk::ImageMemoryBarrier  Image2D::create_memory_barrier(
         vk::ImageLayout new_layout, vk::AccessFlags new_access_mask,
         uint32_t src_queue_family_index, uint32_t dst_queue_family_index)
 {
         vk::ImageMemoryBarrier memory_barrier{};
         memory_barrier
-                .setImage(image2D.image)
-                .setOldLayout(image2D.layout)
+                .setImage(image)
+                .setOldLayout(layout)
                 .setNewLayout(new_layout)
-                .setSrcAccessMask(image2D.access)
+                .setSrcAccessMask(access)
                 .setDstAccessMask(new_access_mask)
                 .setSrcQueueFamilyIndex(src_queue_family_index)
                 .setDstQueueFamilyIndex(dst_queue_family_index);
@@ -241,8 +242,8 @@ vk::ImageMemoryBarrier  TransferImageImpl::create_memory_barrier(
                 .setLayerCount(1)
                 .setLevelCount(1);
 
-        image2D.layout = new_layout;
-        image2D.access = new_access_mask;
+        layout = new_layout;
+        access = new_access_mask;
         return memory_barrier;
 }
 

@@ -130,7 +130,7 @@ class VulkanDisplay {
         vk::Sampler regular_sampler;
         vk::Sampler yCbCr_sampler;
 
-        vk::DescriptorSetLayout descriptor_set_layout;
+        vk::DescriptorSetLayout render_descriptor_set_layout;
         vk::PipelineLayout render_pipeline_layout;
         vk::Pipeline render_pipeline;
 
@@ -138,7 +138,9 @@ class VulkanDisplay {
         vk::ShaderModule conversion_shader;
         vk::PipelineLayout conversion_pipeline_layout;
         vk::Pipeline conversion_pipeline;
-        vk::DescriptorSetLayout conversion_desc_set_layout;
+
+        vk::DescriptorSetLayout conversion_source_desc_set_layout;
+        vk::DescriptorSetLayout conversion_destination_desc_set_layout;
         
         vk::DescriptorPool descriptor_pool;
         vk::CommandPool command_pool;

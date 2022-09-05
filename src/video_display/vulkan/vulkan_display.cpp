@@ -198,11 +198,11 @@ vk::DescriptorPool create_descriptor_pool(vk::Device device, size_t descriptor_c
         std::array<vk::DescriptorPoolSize,2> descriptor_sizes{};
         descriptor_sizes[0]
                 .setType(vk::DescriptorType::eCombinedImageSampler)
-                .setDescriptorCount(descriptor_count);
+                .setDescriptorCount(descriptor_count * 2);
 
         descriptor_sizes[1]
                 .setType(vk::DescriptorType::eStorageImage)
-                .setDescriptorCount(descriptor_count * 2);
+                .setDescriptorCount(descriptor_count);
 
         vk::DescriptorPoolCreateInfo pool_info{};
         pool_info
@@ -353,11 +353,11 @@ struct Binding{
         vk::Sampler sampler = nullptr;
 };
 
-vk::DescriptorSetLayout create_descriptor_set_layout(vk::Device device, std::vector<Binding> bindings) {
+vk::DescriptorSetLayout create_descriptor_set_layout(vk::Device device, uint32_t first_binding, std::vector<Binding> bindings) {
         std::vector<vk::DescriptorSetLayoutBinding> descriptor_set_layout_bindings(bindings.size());
         for(size_t i = 0; i < bindings.size(); i++){
             descriptor_set_layout_bindings[i]
-                .setBinding(i)
+                .setBinding(first_binding + i)
                 .setDescriptorCount(1)
                 .setDescriptorType(bindings[i].type)
                 .setStageFlags(bindings[i].stages)
@@ -371,7 +371,7 @@ vk::DescriptorSetLayout create_descriptor_set_layout(vk::Device device, std::vec
         return device.createDescriptorSetLayout(descriptor_set_layout_info);
 }
 
-vk::PipelineLayout create_compute_pipeline_layout(vk::Device device, vk::DescriptorSetLayout descriptor_set_layout){      
+vk::PipelineLayout create_compute_pipeline_layout(vk::Device device, const std::vector<vk::DescriptorSetLayout>& descriptor_set_layout){      
         vk::PushConstantRange push_constant_range{};
         push_constant_range
                 .setOffset(0)
@@ -380,8 +380,8 @@ vk::PipelineLayout create_compute_pipeline_layout(vk::Device device, vk::Descrip
         
         vk::PipelineLayoutCreateInfo pipeline_layout_info;
         pipeline_layout_info
-                .setSetLayoutCount(1)
-                .setPSetLayouts(&descriptor_set_layout)
+                .setSetLayoutCount(descriptor_set_layout.size())
+                .setPSetLayouts(descriptor_set_layout.data())
                 .setPushConstantRangeCount(1)
                 .setPPushConstantRanges(&push_constant_range);
 
@@ -410,7 +410,7 @@ vk::Pipeline create_compute_pipeline(vk::Device device, vk::PipelineLayout pipel
 
 template<size_t frame_count>
 void bind_conversion_images(vk::Device device, vk::Sampler sampler,
-        std::array<PerFrameResources, frame_count> frame_resources)
+        std::array<PerFrameResources, frame_count>& frame_resources)
 {
         std::vector<vk::DescriptorImageInfo> descriptor_image_infos;
         descriptor_image_infos.reserve(frame_resources.size() * 2);
@@ -441,7 +441,7 @@ void bind_conversion_images(vk::Device device, vk::Sampler sampler,
                 .setDescriptorCount(1);
 
 
-        for(size_t i=0; i < frame_resources.size(); i++){
+        for(size_t i = 0; i < frame_resources.size(); i++){
                 auto view = frame_resources[i].converted_image.get_image_view(device, nullptr);
                 store_image_info.imageView = view;
                 sample_image_info.imageView = view;
@@ -512,14 +512,15 @@ void VulkanDisplay::init(VulkanInstance&& instance, VkSurfaceKHR surface, uint32
 void VulkanDisplay::destroy_format_dependent_resources(){
         device.destroy(render_pipeline);
         device.destroy(render_pipeline_layout);
-        device.destroy(descriptor_set_layout);
+        device.destroy(render_descriptor_set_layout);
         device.destroy(yCbCr_sampler);
         device.destroy(yCbCr_conversion);
         
         device.destroy(conversion_shader);
         device.destroy(conversion_pipeline_layout);
         device.destroy(conversion_pipeline);
-        device.destroy(conversion_desc_set_layout);
+        device.destroy(conversion_source_desc_set_layout);
+        device.destroy(conversion_destination_desc_set_layout);
 
         for(auto& resorces: frame_resources){
                 resorces.converted_image.destroy(device);
@@ -563,7 +564,7 @@ void VulkanDisplay::bind_transfer_image(TransferImageImpl& transfer_image, PerFr
     auto view = transfer_image.get_image_view(device, yCbCr_conversion);
 
     auto image_layout = vk::ImageLayout::eShaderReadOnlyOptimal;
-    auto descriptor_type = format_conversion_enabled ? vk::DescriptorType::eStorageImage : vk::DescriptorType::eCombinedImageSampler;
+    auto descriptor_type = vk::DescriptorType::eCombinedImageSampler;
     auto descriptor_set = format_conversion_enabled ? resources.conversion_source_descriptor_set : resources.render_descriptor_set;
 
     vk::DescriptorImageInfo description_image_info;
@@ -593,9 +594,33 @@ void VulkanDisplay::record_graphics_commands(PerFrameResources& frame_resources,
         begin_info.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
         cmd_buffer.begin(begin_info);
 
-        auto render_begin_memory_barrier = transfer_image.create_memory_barrier(
+        if(format_conversion_enabled){
+                if(format_conversion_enabled){
+                        auto conversion_image_memory_barrier = frame_resources.converted_image.create_memory_barrier(
+                                vk::ImageLayout::eGeneral, vk::AccessFlagBits::eShaderWrite);
+                        cmd_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eFragmentShader, vk::PipelineStageFlagBits::eComputeShader,
+                                vk::DependencyFlagBits::eByRegion, nullptr, nullptr, conversion_image_memory_barrier);
+                }
+
+                auto transfer_image_memory_barrier = transfer_image.get_image2D().create_memory_barrier(
+                        vk::ImageLayout::eShaderReadOnlyOptimal, vk::AccessFlagBits::eShaderRead);
+                cmd_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eComputeShader,
+                        vk::DependencyFlagBits::eByRegion, nullptr, nullptr, transfer_image_memory_barrier);
+
+                auto size = transfer_image.get_description().size;
+                cmd_buffer.bindPipeline(vk::PipelineBindPoint::eCompute, conversion_pipeline);
+                auto desc_sets = std::array{ frame_resources.conversion_source_descriptor_set, frame_resources.conversion_destination_descriptor_set};
+                cmd_buffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, conversion_pipeline_layout, 0, desc_sets, nullptr);
+                cmd_buffer.dispatch(size.width, size.height, 1);
+        }
+
+        Image2D& rendered_image = format_conversion_enabled ? frame_resources.converted_image : transfer_image.get_image2D();
+
+        auto render_begin_memory_barrier = rendered_image.create_memory_barrier(
                 vk::ImageLayout::eShaderReadOnlyOptimal, vk::AccessFlagBits::eShaderRead);
-        cmd_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eFragmentShader,
+         auto previous_stage = format_conversion_enabled ?
+                 vk::PipelineStageFlagBits::eComputeShader : vk::PipelineStageFlagBits::eHost;
+        cmd_buffer.pipelineBarrier(previous_stage, vk::PipelineStageFlagBits::eFragmentShader,
                 vk::DependencyFlagBits::eByRegion, nullptr, nullptr, render_begin_memory_barrier);
 
         vk::RenderPassBeginInfo render_pass_begin_info;
@@ -618,11 +643,12 @@ void VulkanDisplay::record_graphics_commands(PerFrameResources& frame_resources,
 
         cmd_buffer.endRenderPass();
 
-        auto render_end_memory_barrier = transfer_image.create_memory_barrier(
+        auto transfer_image_memory_barrier = transfer_image.get_image2D().create_memory_barrier(
                 vk::ImageLayout::eGeneral, vk::AccessFlagBits::eHostWrite | vk::AccessFlagBits::eHostRead);
-        cmd_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eFragmentShader, vk::PipelineStageFlagBits::eHost,
-                vk::DependencyFlagBits::eByRegion, nullptr, nullptr, render_end_memory_barrier);
-
+        auto transfer_image_last_stage = format_conversion_enabled ?
+                vk::PipelineStageFlagBits::eComputeShader : vk::PipelineStageFlagBits::eFragmentShader;
+        cmd_buffer.pipelineBarrier(transfer_image_last_stage, vk::PipelineStageFlagBits::eHost,
+                vk::DependencyFlagBits::eByRegion, nullptr, nullptr, transfer_image_memory_barrier);
         cmd_buffer.end();
 }
 
@@ -712,14 +738,30 @@ void VulkanDisplay::reconfigure(const TransferImageImpl& transfer_image){
                         yCbCr_conversion = nullptr;
                         yCbCr_sampler = nullptr;
                 }
+
+                render_descriptor_set_layout = create_descriptor_set_layout(device, 0, {
+                    {vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, current_sampler()}
+                });
+                render_pipeline_layout = create_render_pipeline_layout(device, render_descriptor_set_layout);
+                render_pipeline = create_render_pipeline(device, render_pipeline_layout, render_pass, vertex_shader, fragment_shader);
+                auto descriptor_sets = allocate_description_sets(device, descriptor_pool, 
+                        render_descriptor_set_layout, frame_resources.size());
+                for(size_t i = 0; i < frame_resources.size(); i++){
+                        frame_resources[i].render_descriptor_set = descriptor_sets[i];
+                }
+
                 format_conversion_enabled = false;
-                if(false && image_format == vk::Format::eR8G8B8A8Unorm){
+                if(image_format == vk::Format::eR8G8B8A8Unorm){
                         format_conversion_enabled = true;
                         conversion_shader = create_shader(path_to_shaders / "identity.spv", device);
-                        conversion_desc_set_layout = create_descriptor_set_layout(device, {
+                        conversion_source_desc_set_layout = create_descriptor_set_layout(device, 0, {
+                               {vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, current_sampler()}
+                        });
+                        conversion_destination_desc_set_layout = create_descriptor_set_layout(device, 1, {
                                {vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute}
                         });
-                        conversion_pipeline_layout = create_compute_pipeline_layout(device, conversion_desc_set_layout);
+                        conversion_pipeline_layout = create_compute_pipeline_layout(device,
+                                {conversion_source_desc_set_layout, conversion_destination_desc_set_layout});
                         conversion_pipeline = create_compute_pipeline(device, conversion_pipeline_layout, conversion_shader);
                         for(size_t i = 0; i < frame_resources.size(); i++){
                                 frame_resources[i].converted_image.init(
@@ -728,28 +770,21 @@ void VulkanDisplay::reconfigure(const TransferImageImpl& transfer_image){
                                         vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled,
                                         vk::AccessFlagBits::eShaderWrite,
                                         InitialImageData::undefined, MemoryLocation::device_local);
-                                auto conversion_descriptor_sets = allocate_description_sets(device, descriptor_pool,
-                                        conversion_desc_set_layout, frame_resources.size() * 2);
-                                size_t desc_index = 0;
-                                for(size_t i = 0; i < frame_resources.size(); i++){
-                                        auto& resources = frame_resources[i];
-                                        resources.conversion_source_descriptor_set = conversion_descriptor_sets[desc_index];
-                                        desc_index++;
-                                        resources.conversion_destination_descriptor_set = conversion_descriptor_sets[desc_index];
-                                        desc_index++;
-                                }
-                                bind_conversion_images(device, regular_sampler, frame_resources);
                         }
-                }
-                descriptor_set_layout = create_descriptor_set_layout(device, {
-                    {vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, current_sampler()}
-                });
-                render_pipeline_layout = create_render_pipeline_layout(device, descriptor_set_layout);
-                render_pipeline = create_render_pipeline(device, render_pipeline_layout, render_pass, vertex_shader, fragment_shader);
-                auto descriptor_sets = allocate_description_sets(device, descriptor_pool, 
-                        descriptor_set_layout, frame_resources.size());
-                for(size_t i = 0; i < frame_resources.size(); i++){
-                        frame_resources[i].render_descriptor_set = descriptor_sets[i];
+
+                        auto conversion_source_descriptor_sets = allocate_description_sets(device, descriptor_pool,
+                                conversion_source_desc_set_layout, frame_resources.size());
+                        auto conversion_destination_descriptor_sets = allocate_description_sets(device, descriptor_pool,
+                                conversion_destination_desc_set_layout, frame_resources.size());
+                        for(size_t i = 0; i < frame_resources.size(); i++){
+                                assert(conversion_source_descriptor_sets.size() == frame_resources.size());
+                                assert(conversion_destination_descriptor_sets.size() == frame_resources.size());
+                                auto& resources = frame_resources[i];
+                                resources.conversion_source_descriptor_set = conversion_source_descriptor_sets[i];
+                                resources.conversion_destination_descriptor_set = conversion_destination_descriptor_sets[i];
+                        }
+                        
+                        bind_conversion_images(device, regular_sampler, frame_resources);
                 }
         }
 

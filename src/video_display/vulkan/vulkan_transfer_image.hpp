@@ -102,7 +102,11 @@ public:
         vk::ImageView get_image_view(vk::Device device, vk::SamplerYcbcrConversion conversion);
         
         void destroy(vk::Device device);
-public:
+
+        vk::ImageMemoryBarrier create_memory_barrier(vk::ImageLayout new_layout, vk::AccessFlags new_access_mask,
+                uint32_t src_queue_family_index = VK_QUEUE_FAMILY_IGNORED,
+                uint32_t dst_queue_family_index = VK_QUEUE_FAMILY_IGNORED);
+
         vulkan_display::ImageDescription get_description() const { return {size, format}; }
 };
 
@@ -133,11 +137,9 @@ public:
 
         vulkan_display::ImageDescription get_description() const { return image2D.get_description(); }
 
-        vk::ImageMemoryBarrier create_memory_barrier(
-                vk::ImageLayout new_layout,
-                vk::AccessFlags new_access_mask,
-                uint32_t src_queue_family_index = VK_QUEUE_FAMILY_IGNORED,
-                uint32_t dst_queue_family_index = VK_QUEUE_FAMILY_IGNORED);
+        Image2D& get_image2D(){
+                return image2D;        
+        }
 
         vk::ImageView get_image_view(vk::Device device, vk::SamplerYcbcrConversion conversion) {
             return image2D.get_image_view(device, conversion);
