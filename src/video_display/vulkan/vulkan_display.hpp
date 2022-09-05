@@ -42,9 +42,11 @@
 
 #include "vulkan_context.hpp"
 #include "vulkan_transfer_image.hpp"
+#include "vulkan_pipelines.hpp"
 
 
 #include <deque>
+#include <optional>
 #include <queue>
 #include <mutex>
 #include <filesystem>
@@ -60,18 +62,6 @@ using ConcurrentCircularBuffer = moodycamel::BlockingReaderWriterCircularBuffer<
 
 template<typename T>
 using ConcurrentQueue = moodycamel::BlockingReaderWriterQueue<T>;
-
-struct RenderArea {
-        uint32_t x;
-        uint32_t y;
-        uint32_t width;
-        uint32_t height;
-};
-
-struct ImageSize{
-        uint32_t width;
-        uint32_t height;
-};
 
 struct PerFrameResources{
         vk::CommandBuffer command_buffer;
@@ -116,34 +106,18 @@ class VulkanDisplay {
         vk::Device device;
         std::mutex device_mutex{};
 
-        detail::RenderArea render_area{};
-        vk::Viewport viewport;
-        vk::Rect2D scissor;
-
-        vk::ShaderModule vertex_shader;
-        vk::ShaderModule fragment_shader;
-
-        vk::RenderPass render_pass;
-        vk::ClearValue clear_color;
-
         vk::SamplerYcbcrConversion yCbCr_conversion;
         vk::Sampler regular_sampler;
         vk::Sampler yCbCr_sampler;
 
-        vk::DescriptorSetLayout render_descriptor_set_layout;
-        vk::PipelineLayout render_pipeline_layout;
-        vk::Pipeline render_pipeline;
-
         bool format_conversion_enabled = false;
-        vk::ShaderModule conversion_shader;
-        vk::PipelineLayout conversion_pipeline_layout;
-        vk::Pipeline conversion_pipeline;
+        detail::ConversionPipeline conversion_pipeline;
 
-        vk::DescriptorSetLayout conversion_source_desc_set_layout;
-        vk::DescriptorSetLayout conversion_destination_desc_set_layout;
-        
+        detail::RenderPipeline render_pipeline;
+
         vk::DescriptorPool descriptor_pool;
         vk::CommandPool command_pool;
+
         std::array<detail::PerFrameResources, 3> frame_resources;
         std::vector<detail::PerFrameResources*> free_frame_resources;
 

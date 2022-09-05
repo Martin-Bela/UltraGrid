@@ -1,6 +1,6 @@
 #version 450
 
-layout( push_constant ) uniform constants
+layout(push_constant) uniform constants
 {
 	uint x;
 	uint y;

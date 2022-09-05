@@ -136,7 +136,7 @@ public:
         vk::PhysicalDevice get_gpu() { return gpu; }
         vk::Device get_device() { return device; }
         bool is_yCbCr_supported() const { return yCbCr_supported; }
-        uint32_t get_queue_familt_index() { return queue_family_index; }
+        uint32_t get_queue_family_index() { return queue_family_index; }
         vk::Queue get_queue() { return queue; }
         vk::SwapchainKHR get_swapchain() { return swapchain; }
         vk::Format get_swapchain_image_format() { return swapchain_atributes.format.format; };

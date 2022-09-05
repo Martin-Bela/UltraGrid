@@ -103,7 +103,7 @@ bool check_device_extensions(bool propagate_error,
         return true;
 }
 
-uint32_t get_queue_family_index(vk::PhysicalDevice gpu, vk::SurfaceKHR surface) {
+uint32_t choose_queue_family_index(vk::PhysicalDevice gpu, vk::SurfaceKHR surface) {
         assert(gpu);
 
         std::vector<vk::QueueFamilyProperties> families = gpu.getQueueFamilyProperties();
@@ -128,7 +128,7 @@ bool is_gpu_suitable(bool propagate_error, vk::PhysicalDevice gpu, vk::SurfaceKH
         if (!result) {
                 return false;
         }
-        uint32_t index = get_queue_family_index(gpu, surface);
+        uint32_t index = choose_queue_family_index(gpu, surface);
         return index != no_queue_index_found;
 }
 
@@ -447,7 +447,7 @@ void VulkanContext::init(vulkan_display::VulkanInstance&& instance, VkSurfaceKHR
         window_size = vk::Extent2D{ parameters.width, parameters.height };
 
         create_physical_device(gpu_index);
-        queue_family_index = get_queue_family_index(gpu, surface);
+        queue_family_index = choose_queue_family_index(gpu, surface);
         assert(queue_family_index != no_queue_index_found);
         create_logical_device();
         queue = device.getQueue(queue_family_index, 0);
