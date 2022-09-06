@@ -197,6 +197,8 @@ public:
 
 namespace vulkan_display {
 
+namespace detail = vulkan_display_detail;
+
 inline void cout_msg(std::string_view msg) {
         std::cout << msg << std::endl;
 }

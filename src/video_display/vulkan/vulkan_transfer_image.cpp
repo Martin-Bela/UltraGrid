@@ -93,7 +93,7 @@ namespace vulkan_display_detail{
 bool TransferImageImpl::is_image_description_supported(vk::PhysicalDevice gpu, ImageDescription description) {
         vk::ImageFormatProperties properties;
         auto result = gpu.getImageFormatProperties(
-                description.format,
+                format_info(description.format).buffer_format,
                 vk::ImageType::e2D,
                 image_tiling,
                 image_usage_flags,
@@ -119,7 +119,7 @@ void TransferImageImpl::init(vk::Device device, uint32_t id) {
 }
 
 void Image2D::init(VulkanContext& context,
-        vulkan_display::ImageDescription description, vk::ImageUsageFlags usage, 
+        vk::Extent2D size, vk::Format format, vk::ImageUsageFlags usage, 
         vk::AccessFlags initial_access, InitialImageData preinitialised, MemoryLocation memory_location)
 {
         vk::ImageTiling tiling;
@@ -137,15 +137,15 @@ void Image2D::init(VulkanContext& context,
                 requested_properties = {};
                 optional_properties = MemBits::eDeviceLocal;
         }
-        this->init(context, description, usage, initial_access, preinitialised, tiling, requested_properties, optional_properties);
+        this->init(context, size, format, usage, initial_access, preinitialised, tiling, requested_properties, optional_properties);
 }
 
-void Image2D::init(VulkanContext& context, ImageDescription description, vk::ImageUsageFlags usage,
+void Image2D::init(VulkanContext& context, vk::Extent2D size, vk::Format format, vk::ImageUsageFlags usage,
         vk::AccessFlags initial_access, InitialImageData preinitialised, vk::ImageTiling tiling,
         vk::MemoryPropertyFlags requested_properties, vk::MemoryPropertyFlags optional_properties)
 {
-        this->format = description.format;
-        this->size = description.size;
+        this->format = format;
+        this->size = size;
         this->access = initial_access;
         this->layout = preinitialised == InitialImageData::preinitialised ? 
                 vk::ImageLayout::ePreinitialized : 
@@ -157,10 +157,10 @@ void Image2D::init(VulkanContext& context, ImageDescription description, vk::Ima
         image_info
                 .setFlags(image_create_flags)
                 .setImageType(vk::ImageType::e2D)
-                .setExtent(vk::Extent3D{ description.size, 1 })
+                .setExtent(vk::Extent3D{ size, 1 })
                 .setMipLevels(1)
                 .setArrayLayers(1)
-                .setFormat(description.format)
+                .setFormat(format)
                 .setTiling(tiling)
                 .setInitialLayout(layout)
                 .setUsage(usage)
@@ -207,21 +207,23 @@ void Image2D::destroy(vk::Device device) {
 
 void TransferImageImpl::recreate(VulkanContext& context, ImageDescription description) {
         assert(id != NO_ID);
-        image2D.destroy(context.get_device());
+        buffer.destroy(context.get_device());
         
         auto device = context.get_device();
 
-        image2D.init(context, description, vk::ImageUsageFlagBits::eSampled, vk::AccessFlagBits::eHostWrite,
+        buffer.init(context, description.size, description.format_info().buffer_format, vk::ImageUsageFlagBits::eSampled, vk::AccessFlagBits::eHostWrite,
                 InitialImageData::preinitialised, MemoryLocation::host_local);
         
-        void* void_ptr = device.mapMemory(image2D.memory, 0, image2D.byte_size);
+        void* void_ptr = device.mapMemory(buffer.memory, 0, buffer.byte_size);
         if (void_ptr == nullptr) {
                 throw VulkanError{"Image memory cannot be mapped."};
         }
         ptr = reinterpret_cast<std::byte*>(void_ptr);
 
         vk::ImageSubresource subresource{ vk::ImageAspectFlagBits::eColor, 0, 0 };
-        row_pitch = device.getImageSubresourceLayout(image2D.image, subresource).rowPitch;
+        row_pitch = device.getImageSubresourceLayout(buffer.image, subresource).rowPitch;
+
+        image_description = description;
 }
 
 vk::ImageMemoryBarrier  Image2D::create_memory_barrier(
@@ -256,8 +258,8 @@ void TransferImageImpl::preprocess() {
 }
 
 void TransferImageImpl::destroy(vk::Device device) {
-        device.unmapMemory(image2D.memory);
-        image2D.destroy(device);
+        device.unmapMemory(buffer.memory);
+        buffer.destroy(device);
         device.destroy(is_available_fence);
 }
 

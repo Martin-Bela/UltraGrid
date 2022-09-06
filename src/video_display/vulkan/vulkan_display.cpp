@@ -53,6 +53,16 @@ using namespace vulkan_display_detail;
 using namespace vulkan_display;
 
 namespace {
+constexpr bool is_yCbCr_format(vk::Format format) {
+        auto f = static_cast<VkFormat>(format);
+        return VK_FORMAT_G8B8G8R8_422_UNORM <= f && f <= VK_FORMAT_G16_B16_R16_3PLANE_444_UNORM;
+}
+
+constexpr bool is_compressed_format(vk::Format format) {
+        auto f = static_cast<VkFormat>(format);
+        return VK_FORMAT_BC1_RGB_UNORM_BLOCK <= f && f <= VK_FORMAT_ASTC_12x12_SRGB_BLOCK;
+}
+
 vk::PresentModeKHR get_present_mode(bool vsync_enabled, bool tearing_permitted){
         using Mode = vk::PresentModeKHR;
         if (vsync_enabled){
@@ -356,18 +366,18 @@ void VulkanDisplay::record_graphics_commands(PerFrameResources& frame_resources,
                                 vk::DependencyFlagBits::eByRegion, nullptr, nullptr, conversion_image_memory_barrier);
                 }
 
-                auto transfer_image_memory_barrier = transfer_image.get_image2D().create_memory_barrier(
+                auto transfer_image_memory_barrier = transfer_image.get_buffer().create_memory_barrier(
                         vk::ImageLayout::eShaderReadOnlyOptimal, vk::AccessFlagBits::eShaderRead);
                 cmd_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eComputeShader,
                         vk::DependencyFlagBits::eByRegion, nullptr, nullptr, transfer_image_memory_barrier);
 
-                auto image_size = ImageSize::fromExtent2D(transfer_image.get_description().size);
+                auto image_size = ImageSize::fromExtent2D(transfer_image.get_buffer().size);
                 conversion_pipeline.record_commands(cmd_buffer, image_size,
                         {frame_resources.conversion_source_descriptor_set,
                          frame_resources.conversion_destination_descriptor_set});
         }
 
-        Image2D& rendered_image = format_conversion_enabled ? frame_resources.converted_image : transfer_image.get_image2D();
+        Image2D& rendered_image = format_conversion_enabled ? frame_resources.converted_image : transfer_image.get_buffer();
         auto render_begin_memory_barrier = rendered_image.create_memory_barrier(
                 vk::ImageLayout::eShaderReadOnlyOptimal, vk::AccessFlagBits::eShaderRead);
          auto previous_stage = format_conversion_enabled ?
@@ -378,7 +388,7 @@ void VulkanDisplay::record_graphics_commands(PerFrameResources& frame_resources,
         render_pipeline.record_commands(cmd_buffer, frame_resources.render_descriptor_set,
                 context.get_framebuffer(swapchain_image_id));
 
-        auto transfer_image_memory_barrier = transfer_image.get_image2D().create_memory_barrier(
+        auto transfer_image_memory_barrier = transfer_image.get_buffer().create_memory_barrier(
                 vk::ImageLayout::eGeneral, vk::AccessFlagBits::eHostWrite | vk::AccessFlagBits::eHostRead);
         auto transfer_image_last_stage = format_conversion_enabled ?
                 vk::PipelineStageFlagBits::eComputeShader : vk::PipelineStageFlagBits::eFragmentShader;
@@ -407,7 +417,6 @@ TransferImageImpl& VulkanDisplay::acquire_transfer_image() {
 
 TransferImage VulkanDisplay::acquire_image(ImageDescription description) {
         assert(description.size.width * description.size.height != 0);
-        assert(description.format != vk::Format::eUndefined);
         if (!context.is_yCbCr_supported()) {
                 if (is_yCbCr_format(description.format)) {
                         std::string error_msg{ "YCbCr formats are not supported."sv };
@@ -420,7 +429,7 @@ TransferImage VulkanDisplay::acquire_image(ImageDescription description) {
         TransferImageImpl& transfer_image = acquire_transfer_image();
         assert(transfer_image.get_id() != TransferImageImpl::NO_ID);
 
-        if (transfer_image.get_description() != description) {
+        if (transfer_image.get_image_description() != description) {
                 std::scoped_lock device_lock(device_mutex);
                 transfer_image.recreate(context, description);
         }
@@ -467,7 +476,8 @@ bool VulkanDisplay::queue_image(TransferImage image, bool discardable) {
 }
 
 void VulkanDisplay::reconfigure(const TransferImageImpl& transfer_image){
-        auto image_format = transfer_image.get_description().format;
+        auto image_format = transfer_image.get_image_description().format;
+        auto buffer_format = format_info(image_format).buffer_format;
         if (image_format != current_image_description.format) {
                 log_msg("Recreating render_pipeline");
                 context.get_queue().waitIdle();
@@ -475,8 +485,8 @@ void VulkanDisplay::reconfigure(const TransferImageImpl& transfer_image){
 
                 destroy_format_dependent_resources();
 
-                if(is_yCbCr_format(image_format)){
-                        yCbCr_conversion = createYCbCrConversion(device, image_format);
+                if(::is_yCbCr_format(buffer_format)){
+                        yCbCr_conversion = createYCbCrConversion(device, buffer_format);
                         yCbCr_sampler = create_sampler(device, yCbCr_conversion);
                 }
                 else{
@@ -493,13 +503,14 @@ void VulkanDisplay::reconfigure(const TransferImageImpl& transfer_image){
                 }
 
                 format_conversion_enabled = false;
-                if(false && image_format == vk::Format::eR8G8B8A8Unorm){
+                if(image_format == Format::A2BGR10_UintPack32){
                         format_conversion_enabled = true;
                         conversion_pipeline.create(device, path_to_shaders, regular_sampler);
                         for(size_t i = 0; i < frame_resources.size(); i++){
                                 frame_resources[i].converted_image.init(
                                         context,
-                                        ImageDescription{transfer_image.get_description().size, vk::Format::eR8G8B8A8Unorm},
+                                        transfer_image.get_image_description().size,
+                                        vk::Format::eR8G8B8A8Unorm,
                                         vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled,
                                         vk::AccessFlagBits::eShaderWrite,
                                         InitialImageData::undefined, MemoryLocation::device_local);
@@ -520,7 +531,7 @@ void VulkanDisplay::reconfigure(const TransferImageImpl& transfer_image){
                 }
         }
 
-        current_image_description = transfer_image.get_description();
+        current_image_description = transfer_image.get_image_description();
         auto parameters = context.get_window_parameters();
         render_pipeline.update_render_area( { parameters.width, parameters.height }, current_image_description.size);
 }
@@ -567,7 +578,7 @@ bool VulkanDisplay::display_queued_image() {
         }};
 
 
-        TransferImageImpl* transfer_image_ptr = filled_img_queue.timed_pop(33ms);
+        TransferImageImpl* transfer_image_ptr = filled_img_queue.try_pop();
         if (transfer_image_ptr == nullptr) {
                 return false;
         }
@@ -576,7 +587,7 @@ bool VulkanDisplay::display_queued_image() {
         transfer_image.preprocess();
 
         std::unique_lock lock(device_mutex);
-        if (transfer_image.get_description() != current_image_description) {
+        if (transfer_image.get_image_description() != current_image_description) {
                 reconfigure(transfer_image);
         }
 

@@ -42,7 +42,7 @@
 #include "vulkan_pipelines.hpp"
 #include "concurrent_queue.hpp"
 
-
+#include <array>
 #include <deque>
 #include <optional>
 #include <queue>
@@ -73,16 +73,6 @@ struct PerFrameResources{
 namespace vulkan_display {
 
 namespace detail = vulkan_display_detail;
-
-constexpr inline bool is_yCbCr_format(vk::Format format) {
-        auto f = static_cast<VkFormat>(format);
-        return VK_FORMAT_G8B8G8R8_422_UNORM <= f && f <= VK_FORMAT_G16_B16_R16_3PLANE_444_UNORM;
-}
-
-constexpr inline bool is_compressed_format(vk::Format format) {
-        auto f = static_cast<VkFormat>(format);
-        return VK_FORMAT_BC1_RGB_UNORM_BLOCK <= f && f <= VK_FORMAT_ASTC_12x12_SRGB_BLOCK;
-}
 
 class WindowChangedCallback {
 protected:

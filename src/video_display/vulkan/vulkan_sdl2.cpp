@@ -518,7 +518,7 @@ int display_sdl2_reconfigure(void* state, video_desc desc) {
 void draw_splashscreen(state_vulkan_sdl2& s) {
         vkd::TransferImage image;
         try {
-                image = s.vulkan->acquire_image({splash_width, splash_height, vk::Format::eR8G8B8A8Srgb});
+                image = s.vulkan->acquire_image({splash_width, splash_height, vkd::Format::RGBA8_Srgb});
         } 
         catch (std::exception& e) { log_and_exit_uv(e); return; }
         const char* source = splash_data;
@@ -768,7 +768,7 @@ void* display_sdl2_init(module* parent, const char* fmt, unsigned int flags) {
         }
         catch (std::exception& e) { log_and_exit_uv(e); return nullptr; }
 
-        draw_splashscreen(*s);
+        //draw_splashscreen(*s);
         return static_cast<void*>(s.release());
 }
 
@@ -800,13 +800,14 @@ void display_sdl2_done(void* state) {
         delete s;
 }
 
-constexpr std::array<std::pair<codec_t, vk::Format>, 6> codec_to_vulkan_format_mapping {{
-        {RGBA, vk::Format::eR8G8B8A8Unorm},
-        {RGB, vk::Format::eR8G8B8Srgb},
-        {UYVY, vk::Format::eB8G8R8G8422Unorm},
-        {YUYV, vk::Format::eG8B8G8R8422Unorm},
-        {Y216, vk::Format::eG16B16G16R16422Unorm},
-        {DXT1, vk::Format::eBc1RgbSrgbBlock}
+constexpr std::array<std::pair<codec_t, vulkan_display::Format>, 7> codec_to_vulkan_format_mapping {{
+        {RGBA, vkd::Format::RGBA8_Srgb},
+        {RGB,  vkd::Format::RGB8_Srgb},
+        {UYVY, vkd::Format::BGRG8_422Unorm},
+        {YUYV, vkd::Format::GBGR8_422Unorm},
+        {Y216, vkd::Format::GBGR16_422Unorm},
+        {DXT1, vkd::Format::DXT1},
+        {R10k, vkd::Format::A2BGR10_UintPack32}
 }};
 
 vkd::ImageDescription to_vkd_image_desc(const video_desc& ultragrid_desc) {
@@ -814,8 +815,8 @@ vkd::ImageDescription to_vkd_image_desc(const video_desc& ultragrid_desc) {
         codec_t searched_codec = ultragrid_desc.color_spec;
         auto iter = std::find_if(mapping.begin(), mapping.end(),
                 [searched_codec](auto pair) { return pair.first == searched_codec; });
-        vk::Format image_format = (iter == mapping.end()) ? vk::Format::eUndefined : iter->second;
-        return { ultragrid_desc.width, ultragrid_desc.height, image_format };
+        assert(iter != mapping.end());
+        return { ultragrid_desc.width, ultragrid_desc.height, iter->second };
 }
 
 video_frame* display_sdl2_getf(void* state) {
