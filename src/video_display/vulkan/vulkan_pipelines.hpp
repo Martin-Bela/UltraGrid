@@ -35,6 +35,8 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#pragma once
+
 #include "vulkan_context.hpp"
 
 #include <filesystem>

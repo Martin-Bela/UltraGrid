@@ -37,12 +37,10 @@
 
 #pragma once
 
-#include "ext-deps/readerwriterqueue/readerwritercircularbuffer.h"
-#include "ext-deps/readerwriterqueue/readerwriterqueue.h"
-
 #include "vulkan_context.hpp"
 #include "vulkan_transfer_image.hpp"
 #include "vulkan_pipelines.hpp"
+#include "concurrent_queue.hpp"
 
 
 #include <deque>
@@ -56,12 +54,7 @@ namespace vulkan_display_detail {
 
 constexpr static unsigned filled_img_max_count = 1;
 constexpr auto waiting_time_for_filled_image = 50ms;
-
-template<typename T>
-using ConcurrentCircularBuffer = moodycamel::BlockingReaderWriterCircularBuffer<T>;
-
-template<typename T>
-using ConcurrentQueue = moodycamel::BlockingReaderWriterQueue<T>;
+constexpr size_t filled_image_queue_size = 1;
 
 struct PerFrameResources{
         vk::CommandBuffer command_buffer;
@@ -127,9 +120,9 @@ class VulkanDisplay {
         std::deque<TransferImageImpl> transfer_images{};
 
         /// available_img_queue - producer is the render thread, consumer is the provided thread
-        detail::ConcurrentQueue<TransferImageImpl*> available_img_queue{8};
+        detail::ConcurrentQueue<TransferImageImpl*> available_img_queue{};
         /// filled_img_queue - producer is the provider thread, consumer is the render thread
-        detail::ConcurrentCircularBuffer<TransferImageImpl*> filled_img_queue{1};
+        detail::ConcurrentQueue<TransferImageImpl*, detail::filled_img_max_count> filled_img_queue{};
         /// local to provider thread
         std::vector<TransferImageImpl*> available_images;
 

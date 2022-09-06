@@ -61,13 +61,12 @@ vk::PresentModeKHR get_present_mode(bool vsync_enabled, bool tearing_permitted){
         return tearing_permitted ? Mode::eImmediate : Mode::eMailbox;
 }
 
-void discard_filled_image(ConcurrentCircularBuffer<TransferImageImpl*>& filled_img_queue,
+void discard_filled_image(ConcurrentQueue<TransferImageImpl*, filled_img_max_count>& filled_img_queue,
         ConcurrentQueue<TransferImageImpl*>& available_img_queue)
 {
-        TransferImageImpl* transfer_image = nullptr;
-        bool dequeued = filled_img_queue.try_dequeue(transfer_image);
-        if (dequeued && transfer_image) {
-                available_img_queue.enqueue(transfer_image);
+        TransferImageImpl* transfer_image = filled_img_queue.try_pop();
+        if (transfer_image != nullptr) {
+                available_img_queue.wait_push(transfer_image);
         }
 }
 
@@ -209,6 +208,23 @@ void bind_conversion_images(vk::Device device, vk::Sampler sampler,
         }
         device.updateDescriptorSets(descriptor_writes, nullptr);
 }
+
+template<typename Fun>
+class AtScopeExit {
+private:
+        Fun function;
+public:
+        AtScopeExit(Fun function) :
+                function{std::move(function)} { }
+
+        ~AtScopeExit(){ function(); };
+
+        AtScopeExit(const AtScopeExit& other) = delete;
+        AtScopeExit& operator=(const AtScopeExit& other) = delete;
+        AtScopeExit(AtScopeExit&& other) = delete;
+        AtScopeExit& operator=(AtScopeExit&& other) = delete;
+};
+
 
 } //namespace -------------------------------------------------------------
 
@@ -376,10 +392,12 @@ TransferImageImpl& VulkanDisplay::acquire_transfer_image() {
         if (!available_images.empty()){
                 result = available_images.back();
                 available_images.pop_back();
+                assert(result != nullptr);
                 return *result;
         }
 
-        if (available_img_queue.wait_dequeue_timed(result, 5ms)){
+        result = available_img_queue.try_pop();
+        if (result != nullptr){
                 return *result;
         }
         uint32_t id = transfer_images.size();
@@ -417,25 +435,33 @@ void VulkanDisplay::copy_and_queue_image(std::byte* frame, ImageDescription desc
 }
 
 bool VulkanDisplay::queue_image(TransferImage image, bool discardable) {
-        // if image is discardable and the filled_img_queue is full
+        assert(image.get_transfer_image() != nullptr);
         if(!discardable){
-                filled_img_queue.wait_enqueue(image.get_transfer_image());
+                filled_img_queue.wait_push(image.get_transfer_image());
                 return false;
         }
-
-        if (filled_img_queue.wait_enqueue_timed(image.get_transfer_image(), 1ms)){
+        
+        auto removed = filled_img_queue.force_push(image.get_transfer_image());
+        if (removed != nullptr){
+                available_images.push_back(removed);
                 return true;
+        }
+        return false;
+        
+        /*if (filled_img_queue.try_push(image.get_transfer_image())){
+                return false;
         }
 
         available_images.push_back(image.get_transfer_image());
         return true;
+        */
         
         /*if (discardable && filled_img_queue.size_approx() > filled_img_max_count){
                 available_images.push_back(image.get_transfer_image());
                 return true;
         }
         else{
-                filled_img_queue.wait_enqueue(image.get_transfer_image());
+                filled_img_queue.wait_push(image.get_transfer_image());
                 return false;
         }*/
 }
@@ -467,7 +493,7 @@ void VulkanDisplay::reconfigure(const TransferImageImpl& transfer_image){
                 }
 
                 format_conversion_enabled = false;
-                if(image_format == vk::Format::eR8G8B8A8Unorm){
+                if(false && image_format == vk::Format::eR8G8B8A8Unorm){
                         format_conversion_enabled = true;
                         conversion_pipeline.create(device, path_to_shaders, regular_sampler);
                         for(size_t i = 0; i < frame_resources.size(); i++){
@@ -515,7 +541,8 @@ bool VulkanDisplay::display_queued_image() {
                                 device.resetFences(first_image->is_available_fence);
                                 free_frame_resources.push_back(rendered_images.front().gpu_commands);
                                 rendered_images.pop();
-                                available_img_queue.enqueue(first_image);
+                                assert(first_image != nullptr);
+                                available_img_queue.wait_push(first_image);
                         }
                         else if (result == vk::Result::eTimeout){
                                 break;
@@ -532,9 +559,16 @@ bool VulkanDisplay::display_queued_image() {
         auto& resources = *free_frame_resources.back();
         free_frame_resources.pop_back();
 
-        TransferImageImpl* transfer_image_ptr = nullptr;
-        bool dequeued = filled_img_queue.wait_dequeue_timed(transfer_image_ptr, waiting_time_for_filled_image);
-        if (!dequeued || !transfer_image_ptr) {
+        bool frame_resources_used_by_gpu = false;
+        AtScopeExit frame_resources_cleaner{[&](){
+                if(!frame_resources_used_by_gpu){
+                        free_frame_resources.push_back(&resources);
+                }
+        }};
+
+
+        TransferImageImpl* transfer_image_ptr = filled_img_queue.timed_pop(33ms);
+        if (transfer_image_ptr == nullptr) {
                 return false;
         }
 
@@ -584,6 +618,9 @@ bool VulkanDisplay::display_queued_image() {
 
         context.get_queue().submit(submit_info, transfer_image.is_available_fence);
 
+        frame_resources_used_by_gpu = true;
+        rendered_images.emplace(RenderedImage{&transfer_image, &resources});
+
         auto swapchain = context.get_swapchain();
         vk::PresentInfoKHR present_info{};
         present_info
@@ -605,8 +642,7 @@ bool VulkanDisplay::display_queued_image() {
                 default: 
                         throw VulkanError{"Error presenting image:"s + vk::to_string(present_result)};
         }
-        
-        rendered_images.emplace(RenderedImage{&transfer_image, &resources});
+
         return true;
 }
 

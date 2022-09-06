@@ -846,7 +846,6 @@ int display_sdl2_putf(void* state, video_frame* frame, long long timeout_ns) {
 
         if (!frame) {
                 s->should_exit = true;
-                s->vulkan->queue_image(vkd::TransferImage{}, true);
                 return 0;
         }
 
