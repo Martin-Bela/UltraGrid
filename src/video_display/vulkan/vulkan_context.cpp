@@ -53,7 +53,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
         log_msg("validation layer: "s + callback_data->pMessage);
 
         if (message_type != VkDebugUtilsMessageTypeFlagBitsEXT::VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT){
-                assert(false);
+                //assert(false);
         }
 
         return VK_FALSE;

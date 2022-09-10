@@ -151,7 +151,7 @@ vk::SamplerYcbcrConversion createYCbCrConversion(vk::Device device, vk::Format f
         return yCbCr_conversion;
 }
 
-vk::Sampler create_sampler(vk::Device device, vk::SamplerYcbcrConversion yCbCr_conversion) {
+vk::Sampler create_sampler(vk::Device device, vk::SamplerYcbcrConversion yCbCr_conversion, vk::Filter filter) {
         vk::SamplerYcbcrConversionInfo yCbCr_info{ yCbCr_conversion };
         
         vk::SamplerCreateInfo sampler_info;
@@ -159,8 +159,8 @@ vk::Sampler create_sampler(vk::Device device, vk::SamplerYcbcrConversion yCbCr_c
                 .setAddressModeU(vk::SamplerAddressMode::eClampToEdge)
                 .setAddressModeV(vk::SamplerAddressMode::eClampToEdge)
                 .setAddressModeW(vk::SamplerAddressMode::eClampToEdge)
-                .setMagFilter(vk::Filter::eLinear)
-                .setMinFilter(vk::Filter::eLinear)
+                .setMagFilter(filter)
+                .setMinFilter(filter)
                 .setAnisotropyEnable(false)
                 .setUnnormalizedCoordinates(false)
                 .setPNext(yCbCr_conversion ? &yCbCr_info : nullptr);
@@ -255,7 +255,7 @@ void VulkanDisplay::init(VulkanInstance&& instance, VkSurfaceKHR surface, uint32
         command_pool = create_command_pool(device, context.get_queue_family_index());
         descriptor_pool = create_descriptor_pool(device, frame_resources.size());
 
-        regular_sampler = create_sampler(device, nullptr);
+        regular_sampler = create_sampler(device, nullptr, vk::Filter::eNearest);
 
         render_pipeline.create(context, path_to_shaders);
 
@@ -476,18 +476,20 @@ bool VulkanDisplay::queue_image(TransferImage image, bool discardable) {
 }
 
 void VulkanDisplay::reconfigure(const TransferImageImpl& transfer_image){
-        auto image_format = transfer_image.get_image_description().format;
-        auto buffer_format = format_info(image_format).buffer_format;
-        if (image_format != current_image_description.format) {
+        auto image_description = transfer_image.get_image_description();
+        auto& image_format_info = image_description.format_info();
+
+        std::cout << "Shader path:" << image_format_info.conversion_shader.size() << std::endl;
+        if (image_description.format != current_image_description.format) {
                 log_msg("Recreating render_pipeline");
                 context.get_queue().waitIdle();
                 device.resetDescriptorPool(descriptor_pool);
 
                 destroy_format_dependent_resources();
 
-                if(::is_yCbCr_format(buffer_format)){
-                        yCbCr_conversion = createYCbCrConversion(device, buffer_format);
-                        yCbCr_sampler = create_sampler(device, yCbCr_conversion);
+                if(::is_yCbCr_format(image_format_info.buffer_format)){
+                        yCbCr_conversion = createYCbCrConversion(device, image_format_info.buffer_format);
+                        yCbCr_sampler = create_sampler(device, yCbCr_conversion, vk::Filter::eLinear);
                 }
                 else{
                         yCbCr_conversion = nullptr;
@@ -503,14 +505,18 @@ void VulkanDisplay::reconfigure(const TransferImageImpl& transfer_image){
                 }
 
                 format_conversion_enabled = false;
-                if(image_format == Format::A2BGR10_UintPack32){
+
+                std::cout << "Shader path:" << image_format_info.conversion_shader.size() << std::endl;
+                if(!image_format_info.conversion_shader.empty()){
                         format_conversion_enabled = true;
-                        conversion_pipeline.create(device, path_to_shaders, regular_sampler);
+                        auto shader_path = path_to_shaders / image_format_info.conversion_shader;
+                        shader_path += ".comp.spv";
+                        conversion_pipeline.create(device, shader_path, regular_sampler);
                         for(size_t i = 0; i < frame_resources.size(); i++){
                                 frame_resources[i].converted_image.init(
                                         context,
                                         transfer_image.get_image_description().size,
-                                        vk::Format::eR8G8B8A8Unorm,
+                                        image_format_info.conversion_image_format,
                                         vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled,
                                         vk::AccessFlagBits::eShaderWrite,
                                         InitialImageData::undefined, MemoryLocation::device_local);

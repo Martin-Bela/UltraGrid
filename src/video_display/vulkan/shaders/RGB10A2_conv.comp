@@ -1,8 +1,9 @@
 #version 450
 
 layout (local_size_x = 16, local_size_y = 16) in;
+
 layout (set = 0, binding = 0) uniform usampler2D inputImage;
-layout (set = 1, binding = 1, rgba8) uniform image2D resultImage;
+layout (set = 1, binding = 1, rgb10_a2) uniform image2D resultImage;
 
 layout(push_constant) uniform constants
 {
@@ -19,7 +20,13 @@ void main()
 
     vec2 textureCoords = vec2(float(pixelCoords.x) / image_size.width, float(pixelCoords.y) / image_size.height);
     
-    vec4 pixel = texture(inputImage, textureCoords);
-                         
-    imageStore(resultImage, pixelCoords, pixel);
+    uvec4 x = texture(inputImage, textureCoords);
+    // RGBA in big endian representation
+    // RRRRRRRR|RRGGGGGG|GGGGBBBB|BBBBBBAA
+
+    uint r = (x[0] << 2)          | (x[1] >> 6);
+    uint g = ((x[1] & 0x3f) << 4) | (x[2] >> 4);
+    uint b = ((x[2] & 0x0f) << 6) | (x[3] >> 2);
+
+    imageStore(resultImage, pixelCoords, vec4(r, g, b, 1024) / 1024.0);
 }

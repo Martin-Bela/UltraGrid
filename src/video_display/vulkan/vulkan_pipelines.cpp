@@ -137,10 +137,10 @@ vk::Pipeline create_compute_pipeline(vk::Device device, vk::PipelineLayout pipel
 
 namespace vulkan_display_detail {
 
-void ConversionPipeline::create(vk::Device device, std::filesystem::path path_to_shaders, vk::Sampler sampler){
+void ConversionPipeline::create(vk::Device device, const std::filesystem::path& shader_path, vk::Sampler sampler){
         assert(!valid);
         valid = true;
-        compute_shader = create_shader(path_to_shaders / "identity.spv", device);
+        compute_shader = create_shader(shader_path, device);
         source_desc_set_layout = create_descriptor_set_layout(device, 0, {
                {vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, sampler}
         });

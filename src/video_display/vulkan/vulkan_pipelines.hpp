@@ -62,7 +62,7 @@ class ConversionPipeline {
         vk::DescriptorSetLayout destination_desc_set_layout{};
 
 public:
-        void create(vk::Device device, std::filesystem::path path_to_shaders, vk::Sampler sampler);
+        void create(vk::Device device, const std::filesystem::path& shader_path, vk::Sampler sampler);
 
         void destroy(vk::Device device);
 

@@ -807,7 +807,7 @@ constexpr std::array<std::pair<codec_t, vulkan_display::Format>, 7> codec_to_vul
         {YUYV, vkd::Format::GBGR8_422Unorm},
         {Y216, vkd::Format::GBGR16_422Unorm},
         {DXT1, vkd::Format::DXT1},
-        {R10k, vkd::Format::A2BGR10_UintPack32}
+        {R10k, vkd::Format::RGB10A2_UintPack32}
 }};
 
 vkd::ImageDescription to_vkd_image_desc(const video_desc& ultragrid_desc) {

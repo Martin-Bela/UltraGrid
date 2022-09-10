@@ -49,7 +49,7 @@ enum class Format{
         GBGR8_422Unorm,
         GBGR16_422Unorm,
         DXT1,
-        A2BGR10_UintPack32,
+        RGB10A2_UintPack32,
 };
 
 constexpr inline bool is_yCbCr_format(Format format) {
@@ -74,22 +74,23 @@ namespace vulkan_display_detail {
 struct FormatInfo{
         vulkan_display::Format format;
         vk::Format buffer_format;
-        std::string_view conversion_shader;
+        std::string conversion_shader = "";
+        vk::Format conversion_image_format{};
 };
 
-constexpr const FormatInfo& format_info(vulkan_display::Format format){
+inline const FormatInfo& format_info(vulkan_display::Format format){
 
         using F = vulkan_display::Format;
         using VkF = vk::Format;
-        constexpr std::array<FormatInfo, 8> format_infos = {{
-        {F::uninitialized,      VkF::eUndefined,             {}},
-        {F::RGBA8_Srgb,         VkF::eR8G8B8A8Srgb,          {}},
-        {F::RGB8_Srgb,          VkF::eR8G8B8Srgb,            {}},
-        {F::BGRG8_422Unorm,     VkF::eB8G8R8G8422Unorm,      {}},
-        {F::GBGR8_422Unorm,     VkF::eG8B8G8R8422Unorm,      {}},
-        {F::GBGR16_422Unorm,    VkF::eG16B16G16R16422Unorm,  {}},
-        {F::DXT1,               VkF::eBc1RgbSrgbBlock,       {}},
-        {F::A2BGR10_UintPack32, VkF::eA2B10G10R10UintPack32, {"A2BGR10_conversion"}}
+        static std::array<FormatInfo, 8> format_infos = {{
+{F::uninitialized,      VkF::eUndefined,            },
+{F::RGBA8_Srgb,         VkF::eR8G8B8A8Srgb,         },
+{F::RGB8_Srgb,          VkF::eR8G8B8Srgb,           },
+{F::BGRG8_422Unorm,     VkF::eB8G8R8G8422Unorm,     },
+{F::GBGR8_422Unorm,     VkF::eG8B8G8R8422Unorm,     },
+{F::GBGR16_422Unorm,    VkF::eG16B16G16R16422Unorm, },
+{F::DXT1,               VkF::eBc1RgbSrgbBlock,      },
+{F::RGB10A2_UintPack32, VkF::eR8G8B8A8Uint,         {"RGB10A2_conv"}, VkF::eA2B10G10R10UnormPack32}
         }};
 
         auto& result = format_infos[static_cast<size_t>(format)];
