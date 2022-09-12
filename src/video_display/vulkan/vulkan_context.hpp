@@ -84,6 +84,11 @@ class VulkanInstance;
 
 namespace vulkan_display_detail {
 
+constexpr bool is_yCbCr_format(vk::Format format) {
+        auto f = static_cast<VkFormat>(format);
+        return VK_FORMAT_G8B8G8R8_422_UNORM <= f && f <= VK_FORMAT_G16_B16_R16_3PLANE_444_UNORM;
+}
+
 using namespace std::literals;
 
 constexpr uint32_t no_queue_index_found = UINT32_MAX;

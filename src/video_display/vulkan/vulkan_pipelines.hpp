@@ -54,6 +54,7 @@ struct ImageSize{
 
 class ConversionPipeline {
         bool valid = false;
+
         vk::ShaderModule compute_shader{};
         vk::PipelineLayout pipeline_layout{};
         vk::Pipeline pipeline{};
@@ -61,8 +62,11 @@ class ConversionPipeline {
         vk::DescriptorSetLayout source_desc_set_layout{};
         vk::DescriptorSetLayout destination_desc_set_layout{};
 
+        vk::SamplerYcbcrConversion yCbCr_conversion{};
+        vk::Sampler sampler{};
+
 public:
-        void create(vk::Device device, const std::filesystem::path& shader_path, vk::Sampler sampler);
+        void create(vk::Device device, const std::filesystem::path& shader_path, vk::Format format);
 
         void destroy(vk::Device device);
 
@@ -71,6 +75,10 @@ public:
         vk::DescriptorSetLayout get_source_image_desc_set_layout(){ return source_desc_set_layout; }
 
         vk::DescriptorSetLayout get_destination_image_desc_set_layout() { return destination_desc_set_layout; }
+
+        vk::Sampler get_sampler(){ return sampler; }
+
+        vk::SamplerYcbcrConversion get_yCbCr_conversion(){ return yCbCr_conversion; };
 };
 
 struct RenderArea {
@@ -82,20 +90,24 @@ struct RenderArea {
 
 class RenderPipeline {
         bool valid = false;
-        RenderArea render_area;
-        vk::Extent2D window_size;
-        vk::Viewport viewport;
-        vk::Rect2D scissor;
 
-        vk::ShaderModule vertex_shader;
-        vk::ShaderModule fragment_shader;
+        vk::SamplerYcbcrConversion yCbCr_conversion{};
+        vk::Sampler sampler{};
 
-        vk::RenderPass render_pass;
-        vk::ClearValue clear_color;
+        RenderArea render_area{};
+        vk::Extent2D window_size{};
+        vk::Viewport viewport{};
+        vk::Rect2D scissor{};
 
-        vk::DescriptorSetLayout image_desc_set_layout;
-        vk::PipelineLayout pipeline_layout;
-        vk::Pipeline pipeline;
+        vk::ShaderModule vertex_shader{};
+        vk::ShaderModule fragment_shader{};
+
+        vk::RenderPass render_pass{};
+        vk::ClearValue clear_color{};
+
+        vk::DescriptorSetLayout image_desc_set_layout{};
+        vk::PipelineLayout pipeline_layout{};
+        vk::Pipeline pipeline{};
 
 public:
         void create(VulkanContext& context, const std::filesystem::path& path_to_shaders);
@@ -105,13 +117,17 @@ public:
         void update_render_area(vk::Extent2D window_size, vk::Extent2D image_size);
 
         /** Invalidates descriptor sets created from stored descriptor set layout**/
-        void reconfigure(vk::Device device, vk::Sampler sampler);
+        void reconfigure(vk::Device device, vk::Format sampler);
 
         void record_commands(vk::CommandBuffer cmd_buffer, vk::DescriptorSet image, vk::Framebuffer framebuffer);
 
         vk::RenderPass get_render_pass(){ return render_pass; }
 
         vk::DescriptorSetLayout get_image_desc_set_layout(){ return image_desc_set_layout; }
+
+        vk::Sampler get_sampler(){ return sampler; }
+
+        vk::SamplerYcbcrConversion get_yCbCr_conversion(){ return yCbCr_conversion; };
 };
 
 

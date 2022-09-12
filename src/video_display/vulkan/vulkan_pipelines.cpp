@@ -72,6 +72,40 @@ vk::ShaderModule create_shader(
         return device.createShaderModule(shader_info);
 }
 
+vk::SamplerYcbcrConversion createYCbCrConversion(vk::Device device, vk::Format format){
+        vk::SamplerYcbcrConversion yCbCr_conversion = nullptr;
+        if (is_yCbCr_format(format)) {
+                vk::SamplerYcbcrConversionCreateInfo conversion_info;
+                conversion_info
+                        .setFormat(format)
+                        .setYcbcrModel(vk::SamplerYcbcrModelConversion::eYcbcr709)
+                        .setYcbcrRange(vk::SamplerYcbcrRange::eItuNarrow)
+                        .setComponents({})
+                        .setChromaFilter(vk::Filter::eLinear)
+                        .setXChromaOffset(vk::ChromaLocation::eMidpoint)
+                        .setYChromaOffset(vk::ChromaLocation::eMidpoint)
+                        .setForceExplicitReconstruction(false);
+                yCbCr_conversion = device.createSamplerYcbcrConversion(conversion_info);
+        }
+        return yCbCr_conversion;
+}
+
+vk::Sampler create_sampler(vk::Device device, vk::SamplerYcbcrConversion yCbCr_conversion, vk::Filter filter) {
+        vk::SamplerYcbcrConversionInfo yCbCr_info{ yCbCr_conversion };
+        
+        vk::SamplerCreateInfo sampler_info;
+        sampler_info
+                .setAddressModeU(vk::SamplerAddressMode::eClampToEdge)
+                .setAddressModeV(vk::SamplerAddressMode::eClampToEdge)
+                .setAddressModeW(vk::SamplerAddressMode::eClampToEdge)
+                .setMagFilter(filter)
+                .setMinFilter(filter)
+                .setAnisotropyEnable(false)
+                .setUnnormalizedCoordinates(false)
+                .setPNext(yCbCr_conversion ? &yCbCr_info : nullptr);
+        return device.createSampler(sampler_info);
+}
+
 struct Binding{
         vk::DescriptorType type;
         vk::ShaderStageFlags stages;
@@ -137,9 +171,13 @@ vk::Pipeline create_compute_pipeline(vk::Device device, vk::PipelineLayout pipel
 
 namespace vulkan_display_detail {
 
-void ConversionPipeline::create(vk::Device device, const std::filesystem::path& shader_path, vk::Sampler sampler){
+void ConversionPipeline::create(vk::Device device, const std::filesystem::path& shader_path, vk::Format format){
         assert(!valid);
         valid = true;
+
+        yCbCr_conversion = createYCbCrConversion(device, format);
+        sampler = create_sampler(device, yCbCr_conversion, vk::Filter::eNearest);
+
         compute_shader = create_shader(shader_path, device);
         source_desc_set_layout = create_descriptor_set_layout(device, 0, {
                {vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute, sampler}
@@ -155,6 +193,8 @@ void ConversionPipeline::create(vk::Device device, const std::filesystem::path& 
 void ConversionPipeline::destroy(vk::Device device){
         if(valid){
                 valid = false;
+                device.destroy(yCbCr_conversion);
+                device.destroy(sampler);
                 device.destroy(compute_shader);
                 device.destroy(pipeline_layout);
                 device.destroy(pipeline);
@@ -339,6 +379,8 @@ void RenderPipeline::destroy(vk::Device device){
                 device.destroy(render_pass);
                 device.destroy(fragment_shader);
                 device.destroy(vertex_shader);
+                device.destroy(sampler);
+                device.destroy(yCbCr_conversion);
         }
 }
 
@@ -372,11 +414,15 @@ void RenderPipeline::update_render_area(vk::Extent2D window_size, vk::Extent2D i
                 .setExtent({ render_area.width, render_area.height });
 }
 
-void RenderPipeline::reconfigure(vk::Device device, vk::Sampler sampler){
+void RenderPipeline::reconfigure(vk::Device device, vk::Format format){
         device.destroy(pipeline);
         device.destroy(pipeline_layout);
         device.destroy(image_desc_set_layout);
+        device.destroy(sampler);
+        device.destroy(yCbCr_conversion);
 
+        yCbCr_conversion = createYCbCrConversion(device, format);
+        sampler = create_sampler(device, yCbCr_conversion, vk::Filter::eLinear);
         image_desc_set_layout = create_descriptor_set_layout(device, 0, {
             {vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, sampler}
         });

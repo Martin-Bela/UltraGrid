@@ -768,7 +768,7 @@ void* display_sdl2_init(module* parent, const char* fmt, unsigned int flags) {
         }
         catch (std::exception& e) { log_and_exit_uv(e); return nullptr; }
 
-        //draw_splashscreen(*s);
+        draw_splashscreen(*s);
         return static_cast<void*>(s.release());
 }
 

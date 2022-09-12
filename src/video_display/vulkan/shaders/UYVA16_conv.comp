@@ -20,13 +20,13 @@ void main()
 
     vec2 textureCoords = vec2(float(pixelCoords.x) / image_size.width, float(pixelCoords.y) / image_size.height);
 
+    vec4 yuv = (texture(inputImage, textureCoords).grba) / 65535.0;
+
     float Y_SCALED_PLACEHOLDER = 1.1643835;
     float R_CR_PLACEHOLDER = 1.7926522;
     float G_CB_PLACEHOLDER = -0.21323606;
     float G_CR_PLACEHOLDER = -0.5330038;
     float B_CB_PLACEHOLDER = 2.11242;
-
-    vec4 yuv = (texture(inputImage, textureCoords).grba) / 65535.0;
     
     yuv.r = Y_SCALED_PLACEHOLDER * (yuv.r - 0.0625);
     yuv.g = yuv.g - 0.5;

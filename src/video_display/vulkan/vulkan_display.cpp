@@ -133,40 +133,6 @@ std::vector<vk::DescriptorSet> allocate_description_sets(vk::Device device, vk::
         return device.allocateDescriptorSets(allocate_info);
 }
 
-vk::SamplerYcbcrConversion createYCbCrConversion(vk::Device device, vk::Format format){
-        vk::SamplerYcbcrConversion yCbCr_conversion = nullptr;
-        if (is_yCbCr_format(format)) {
-                vk::SamplerYcbcrConversionCreateInfo conversion_info;
-                conversion_info
-                        .setFormat(format)
-                        .setYcbcrModel(vk::SamplerYcbcrModelConversion::eYcbcr709)
-                        .setYcbcrRange(vk::SamplerYcbcrRange::eItuNarrow)
-                        .setComponents({})
-                        .setChromaFilter(vk::Filter::eLinear)
-                        .setXChromaOffset(vk::ChromaLocation::eMidpoint)
-                        .setYChromaOffset(vk::ChromaLocation::eMidpoint)
-                        .setForceExplicitReconstruction(false);
-                yCbCr_conversion = device.createSamplerYcbcrConversion(conversion_info);
-        }
-        return yCbCr_conversion;
-}
-
-vk::Sampler create_sampler(vk::Device device, vk::SamplerYcbcrConversion yCbCr_conversion, vk::Filter filter) {
-        vk::SamplerYcbcrConversionInfo yCbCr_info{ yCbCr_conversion };
-        
-        vk::SamplerCreateInfo sampler_info;
-        sampler_info
-                .setAddressModeU(vk::SamplerAddressMode::eClampToEdge)
-                .setAddressModeV(vk::SamplerAddressMode::eClampToEdge)
-                .setAddressModeW(vk::SamplerAddressMode::eClampToEdge)
-                .setMagFilter(filter)
-                .setMinFilter(filter)
-                .setAnisotropyEnable(false)
-                .setUnnormalizedCoordinates(false)
-                .setPNext(yCbCr_conversion ? &yCbCr_info : nullptr);
-        return device.createSampler(sampler_info);
-}
-
 template<size_t frame_count>
 void bind_conversion_images(vk::Device device, vk::Sampler sampler,
         std::array<PerFrameResources, frame_count>& frame_resources)
@@ -255,8 +221,6 @@ void VulkanDisplay::init(VulkanInstance&& instance, VkSurfaceKHR surface, uint32
         command_pool = create_command_pool(device, context.get_queue_family_index());
         descriptor_pool = create_descriptor_pool(device, frame_resources.size());
 
-        regular_sampler = create_sampler(device, nullptr, vk::Filter::eNearest);
-
         render_pipeline.create(context, path_to_shaders);
 
         context.create_framebuffers(render_pipeline.get_render_pass());
@@ -282,9 +246,6 @@ void VulkanDisplay::init(VulkanInstance&& instance, VkSurfaceKHR surface, uint32
 }
 
 void VulkanDisplay::destroy_format_dependent_resources(){
-        device.destroy(yCbCr_sampler);
-        device.destroy(yCbCr_conversion);
-
         conversion_pipeline.destroy(device);
 
         for(auto& resorces: frame_resources){
@@ -303,7 +264,6 @@ void VulkanDisplay::destroy() {
                                 image.destroy(device);
                         }
                         device.destroy(command_pool);
-                        device.destroy(regular_sampler);
                         for (auto& resources : frame_resources) {
                                 device.destroy(resources.image_acquired_semaphore);
                                 device.destroy(resources.image_rendered_semaphore);
@@ -325,27 +285,34 @@ bool VulkanDisplay::is_image_description_supported(ImageDescription description)
 }
 
 void VulkanDisplay::bind_transfer_image(TransferImageImpl& transfer_image, PerFrameResources& resources) {
-    auto view = transfer_image.get_image_view(device, yCbCr_conversion);
+        auto image_layout = vk::ImageLayout::eShaderReadOnlyOptimal;
+        auto descriptor_type = vk::DescriptorType::eCombinedImageSampler;
 
-    auto image_layout = vk::ImageLayout::eShaderReadOnlyOptimal;
-    auto descriptor_type = vk::DescriptorType::eCombinedImageSampler;
-    auto descriptor_set = format_conversion_enabled ? resources.conversion_source_descriptor_set : resources.render_descriptor_set;
+        auto yCbCr_conversion = format_conversion_enabled ?
+                conversion_pipeline.get_yCbCr_conversion() : render_pipeline.get_yCbCr_conversion();
+        auto sampler = format_conversion_enabled ?
+                conversion_pipeline.get_sampler() : render_pipeline.get_sampler();
+        auto descriptor_set = format_conversion_enabled ?
+                resources.conversion_source_descriptor_set : resources.render_descriptor_set;
 
-    vk::DescriptorImageInfo description_image_info;
-    description_image_info
-            .setImageLayout(image_layout)
-            .setSampler(current_sampler())
-            .setImageView(view);
 
-    vk::WriteDescriptorSet descriptor_writes{};
-    descriptor_writes
-            .setDstBinding(0)
-            .setDescriptorType(descriptor_type)
-            .setPImageInfo(&description_image_info)
-            .setDescriptorCount(1)
-            .setDstSet(descriptor_set);
+        auto view = transfer_image.get_image_view(device, yCbCr_conversion);
 
-    device.updateDescriptorSets(descriptor_writes, nullptr);
+        vk::DescriptorImageInfo description_image_info;
+        description_image_info
+                .setImageLayout(image_layout)
+                .setSampler(sampler)
+                .setImageView(view);
+
+        vk::WriteDescriptorSet descriptor_writes{};
+        descriptor_writes
+                .setDstBinding(0)
+                .setDescriptorType(descriptor_type)
+                .setPImageInfo(&description_image_info)
+                .setDescriptorCount(1)
+                .setDstSet(descriptor_set);
+
+        device.updateDescriptorSets(descriptor_writes, nullptr);
 }
 
 void VulkanDisplay::record_graphics_commands(PerFrameResources& frame_resources, 
@@ -486,16 +453,10 @@ void VulkanDisplay::reconfigure(const TransferImageImpl& transfer_image){
 
                 destroy_format_dependent_resources();
 
-                if(::is_yCbCr_format(image_format_info.buffer_format)){
-                        yCbCr_conversion = createYCbCrConversion(device, image_format_info.buffer_format);
-                        yCbCr_sampler = create_sampler(device, yCbCr_conversion, vk::Filter::eLinear);
-                }
-                else{
-                        yCbCr_conversion = nullptr;
-                        yCbCr_sampler = nullptr;
-                }
+                format_conversion_enabled = !image_format_info.conversion_shader.empty();
 
-                render_pipeline.reconfigure(device, current_sampler());
+                render_pipeline.reconfigure(device, format_conversion_enabled ?
+                        image_format_info.conversion_image_format : image_format_info.buffer_format);
 
                 auto descriptor_sets = allocate_description_sets(device, descriptor_pool, 
                         render_pipeline.get_image_desc_set_layout(), frame_resources.size());
@@ -503,13 +464,10 @@ void VulkanDisplay::reconfigure(const TransferImageImpl& transfer_image){
                         frame_resources[i].render_descriptor_set = descriptor_sets[i];
                 }
 
-                format_conversion_enabled = false;
-
-                if(!image_format_info.conversion_shader.empty()){
-                        format_conversion_enabled = true;
+                if(format_conversion_enabled){
                         auto shader_path = path_to_shaders / image_format_info.conversion_shader;
                         shader_path += ".comp.spv";
-                        conversion_pipeline.create(device, shader_path, regular_sampler);
+                        conversion_pipeline.create(device, shader_path, image_format_info.buffer_format);
                         for(size_t i = 0; i < frame_resources.size(); i++){
                                 frame_resources[i].converted_image.init(
                                         context,
@@ -531,7 +489,7 @@ void VulkanDisplay::reconfigure(const TransferImageImpl& transfer_image){
                                 resources.conversion_destination_descriptor_set = conversion_destination_descriptor_sets[i];
                         }
                         
-                        bind_conversion_images(device, regular_sampler, frame_resources);
+                        bind_conversion_images(device, conversion_pipeline.get_sampler(), frame_resources);
                 }
         }
 

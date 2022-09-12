@@ -89,10 +89,6 @@ class VulkanDisplay {
         vk::Device device;
         std::mutex device_mutex{};
 
-        vk::SamplerYcbcrConversion yCbCr_conversion;
-        vk::Sampler regular_sampler;
-        vk::Sampler yCbCr_sampler;
-
         bool format_conversion_enabled = false;
         detail::ConversionPipeline conversion_pipeline;
 
@@ -132,8 +128,6 @@ private:
         void record_graphics_commands(detail::PerFrameResources& commands, TransferImageImpl& transfer_image, uint32_t swapchain_image_id);
 
         void reconfigure(const TransferImageImpl& transfer_image);
-
-        vk::Sampler current_sampler(){ return yCbCr_sampler ? yCbCr_sampler : regular_sampler; }
 
         void destroy_format_dependent_resources();
 public:
