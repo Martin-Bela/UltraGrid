@@ -51,6 +51,7 @@ enum class Format{
         UYVA16_422_conv,
         DXT1,
         RGB10A2_conv,
+        UYVY8_422_conv
 };
 
 constexpr inline bool is_yCbCr_format(Format format) { //REMOVE THIS FUNCTION
@@ -83,7 +84,8 @@ inline const FormatInfo& format_info(vulkan_display::Format format){
 
         using F = vulkan_display::Format;
         using VkF = vk::Format;
-        static std::array<FormatInfo, 9> format_infos = {{
+
+        static std::array<FormatInfo, 10> format_infos = {{
 {F::uninitialized,   VkF::eUndefined,            },
 {F::RGBA8_Srgb,      VkF::eR8G8B8A8Srgb,         },
 {F::RGB8_Srgb,       VkF::eR8G8B8Srgb,           },
@@ -93,6 +95,7 @@ inline const FormatInfo& format_info(vulkan_display::Format format){
 {F::UYVA16_422_conv, VkF::eR16G16B16A16Uint,     {"UYVA16_conv"}, VkF::eR16G16B16A16Sfloat},
 {F::DXT1,            VkF::eBc1RgbSrgbBlock,      },
 {F::RGB10A2_conv,    VkF::eR8G8B8A8Uint,         {"RGB10A2_conv"}, VkF::eA2B10G10R10UnormPack32},
+{F::UYVY8_422_conv,  VkF::eR8G8B8A8Unorm,        {"UYVY8_conv"}, VkF::eR8G8B8A8Unorm}
         }};
 
         auto& result = format_infos[static_cast<size_t>(format)];

@@ -211,7 +211,12 @@ void TransferImageImpl::recreate(VulkanContext& context, ImageDescription descri
         
         auto device = context.get_device();
 
-        buffer.init(context, description.size, description.format_info().buffer_format, vk::ImageUsageFlagBits::eSampled, vk::AccessFlagBits::eHostWrite,
+        vk::Extent2D buffer_size = description.size;
+        if (description.format == Format::UYVY8_422_conv){
+                buffer_size.width /= 2;
+        }
+
+        buffer.init(context, buffer_size, description.format_info().buffer_format, vk::ImageUsageFlagBits::eSampled, vk::AccessFlagBits::eHostWrite,
                 InitialImageData::preinitialised, MemoryLocation::host_local);
         
         void* void_ptr = device.mapMemory(buffer.memory, 0, buffer.byte_size);

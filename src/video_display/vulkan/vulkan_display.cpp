@@ -338,7 +338,7 @@ void VulkanDisplay::record_graphics_commands(PerFrameResources& frame_resources,
                 cmd_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eHost, vk::PipelineStageFlagBits::eComputeShader,
                         vk::DependencyFlagBits::eByRegion, nullptr, nullptr, transfer_image_memory_barrier);
 
-                auto image_size = ImageSize::fromExtent2D(transfer_image.get_buffer().size);
+                auto image_size = ImageSize::fromExtent2D(frame_resources.converted_image.size);
                 conversion_pipeline.record_commands(cmd_buffer, image_size,
                         {frame_resources.conversion_source_descriptor_set,
                          frame_resources.conversion_destination_descriptor_set});
@@ -468,10 +468,14 @@ void VulkanDisplay::reconfigure(const TransferImageImpl& transfer_image){
                         auto shader_path = path_to_shaders / image_format_info.conversion_shader;
                         shader_path += ".comp.spv";
                         conversion_pipeline.create(device, shader_path, image_format_info.buffer_format);
+                        vk::Extent2D image_size = transfer_image.get_image_description().size;
+                        if (image_format_info.format == Format::UYVY8_422_conv){
+                                image_size.width *= 2;
+                        }
                         for(size_t i = 0; i < frame_resources.size(); i++){
                                 frame_resources[i].converted_image.init(
                                         context,
-                                        transfer_image.get_image_description().size,
+                                        image_size,
                                         image_format_info.conversion_image_format,
                                         vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled,
                                         vk::AccessFlagBits::eShaderWrite,
