@@ -800,14 +800,15 @@ void display_sdl2_done(void* state) {
         delete s;
 }
 
-constexpr std::array<std::pair<codec_t, vulkan_display::Format>, 7> codec_to_vulkan_format_mapping {{
+constexpr std::array<std::pair<codec_t, vulkan_display::Format>, 8> codec_to_vulkan_format_mapping {{
         {RGBA, vkd::Format::RGBA8_Srgb},
         {RGB,  vkd::Format::RGB8_Srgb},
-        {UYVY, vkd::Format::BGRG8_422Unorm},
-        {YUYV, vkd::Format::GBGR8_422Unorm},
-        {Y216, vkd::Format::GBGR16_422Unorm},
+        {UYVY, vkd::Format::UYVY8_422},
+        {YUYV, vkd::Format::YUYV8_422},
+        {Y216, vkd::Format::YUYV16_422},
+        {Y416, vkd::Format::UYVA16_422_conv},
         {DXT1, vkd::Format::DXT1},
-        {R10k, vkd::Format::RGB10A2_UintPack32}
+        {R10k, vkd::Format::RGB10A2_conv}
 }};
 
 vkd::ImageDescription to_vkd_image_desc(const video_desc& ultragrid_desc) {

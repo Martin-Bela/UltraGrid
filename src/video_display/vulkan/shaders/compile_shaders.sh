@@ -1,11 +1,15 @@
-#!/bin/bash -x
+#!/bin/bash
 
 #set correct glslc location
 GLSLC=glslc
 
-SOURCE_PATH=.
 DEST_PATH=../../../../share/ultragrid/vulkan_shaders
 
-$GLSLC vulkan_shader.vert -o $DEST_PATH/vert.spv
-$GLSLC vulkan_shader.frag -o $DEST_PATH/frag.spv
-$GLSLC RGB10A2_conv.comp -o $DEST_PATH/RGB10A2_conv.comp.spv
+declare -a SHADERS=("render.vert" "render.frag" "RGB10A2_conv.comp" "UYVA16_conv.comp")
+
+for shader in ${SHADERS[@]}; do
+	echo "$GLSLC $SOURCE_PATH/$shader -o $DEST_PATH/$shader.spv"
+	$GLSLC $SOURCE_PATH/$shader -o $DEST_PATH/$shader.spv
+done
+
+

@@ -45,16 +45,17 @@ enum class Format{
         uninitialized,
         RGBA8_Srgb,
         RGB8_Srgb,
-        BGRG8_422Unorm,
-        GBGR8_422Unorm,
-        GBGR16_422Unorm,
+        UYVY8_422,
+        YUYV8_422,
+        YUYV16_422,
+        UYVA16_422_conv,
         DXT1,
-        RGB10A2_UintPack32,
+        RGB10A2_conv,
 };
 
-constexpr inline bool is_yCbCr_format(Format format) {
+constexpr inline bool is_yCbCr_format(Format format) { //REMOVE THIS FUNCTION
         using F = Format;
-        std::array yCbCr_formats{F::BGRG8_422Unorm, F::GBGR8_422Unorm, F::GBGR16_422Unorm};
+        std::array yCbCr_formats{F::UYVY8_422, F::YUYV8_422, F::YUYV16_422};
         for(Format f : yCbCr_formats){
                 if (f == format){
                         return true;
@@ -82,15 +83,16 @@ inline const FormatInfo& format_info(vulkan_display::Format format){
 
         using F = vulkan_display::Format;
         using VkF = vk::Format;
-        static std::array<FormatInfo, 8> format_infos = {{
-{F::uninitialized,      VkF::eUndefined,            },
-{F::RGBA8_Srgb,         VkF::eR8G8B8A8Srgb,         },
-{F::RGB8_Srgb,          VkF::eR8G8B8Srgb,           },
-{F::BGRG8_422Unorm,     VkF::eB8G8R8G8422Unorm,     },
-{F::GBGR8_422Unorm,     VkF::eG8B8G8R8422Unorm,     },
-{F::GBGR16_422Unorm,    VkF::eG16B16G16R16422Unorm, },
-{F::DXT1,               VkF::eBc1RgbSrgbBlock,      },
-{F::RGB10A2_UintPack32, VkF::eR8G8B8A8Uint,         {"RGB10A2_conv"}, VkF::eA2B10G10R10UnormPack32}
+        static std::array<FormatInfo, 9> format_infos = {{
+{F::uninitialized,   VkF::eUndefined,            },
+{F::RGBA8_Srgb,      VkF::eR8G8B8A8Srgb,         },
+{F::RGB8_Srgb,       VkF::eR8G8B8Srgb,           },
+{F::UYVY8_422,       VkF::eB8G8R8G8422Unorm,     },
+{F::YUYV8_422,       VkF::eG8B8G8R8422Unorm,     },
+{F::YUYV16_422,      VkF::eG16B16G16R16422Unorm, },
+{F::UYVA16_422_conv, VkF::eR16G16B16A16Uint,     {"UYVA16_conv"}, VkF::eR16G16B16A16Sfloat},
+{F::DXT1,            VkF::eBc1RgbSrgbBlock,      },
+{F::RGB10A2_conv,    VkF::eR8G8B8A8Uint,         {"RGB10A2_conv"}, VkF::eA2B10G10R10UnormPack32},
         }};
 
         auto& result = format_infos[static_cast<size_t>(format)];

@@ -321,8 +321,8 @@ void RenderPipeline::create(VulkanContext& context, const std::filesystem::path&
         valid = true;
 
         auto device = context.get_device();
-        vertex_shader = create_shader(path_to_shaders / "vert.spv", device);
-        fragment_shader = create_shader(path_to_shaders / "frag.spv", device);
+        vertex_shader = create_shader(path_to_shaders / "render.vert.spv", device);
+        fragment_shader = create_shader(path_to_shaders / "render.frag.spv", device);
         render_pass = create_render_pass(device, context.get_swapchain_image_format());
 
         vk::ClearColorValue clear_color_value{};

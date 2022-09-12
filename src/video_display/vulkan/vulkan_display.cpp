@@ -479,7 +479,6 @@ void VulkanDisplay::reconfigure(const TransferImageImpl& transfer_image){
         auto image_description = transfer_image.get_image_description();
         auto& image_format_info = image_description.format_info();
 
-        std::cout << "Shader path:" << image_format_info.conversion_shader.size() << std::endl;
         if (image_description.format != current_image_description.format) {
                 log_msg("Recreating render_pipeline");
                 context.get_queue().waitIdle();
@@ -506,7 +505,6 @@ void VulkanDisplay::reconfigure(const TransferImageImpl& transfer_image){
 
                 format_conversion_enabled = false;
 
-                std::cout << "Shader path:" << image_format_info.conversion_shader.size() << std::endl;
                 if(!image_format_info.conversion_shader.empty()){
                         format_conversion_enabled = true;
                         auto shader_path = path_to_shaders / image_format_info.conversion_shader;
