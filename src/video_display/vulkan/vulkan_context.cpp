@@ -84,7 +84,6 @@ void check_instance_extensions(const std::vector<const char*>& required_extensio
         }
 }
 
-
 bool check_device_extensions(bool propagate_error,
         const std::vector<const char*>& required_extensions, const vk::PhysicalDevice& device)
 {
@@ -114,7 +113,10 @@ uint32_t choose_queue_family_index(vk::PhysicalDevice gpu, vk::SurfaceKHR surfac
                         surface_supported = gpu.getSurfaceSupportKHR(i, surface);
                 }
 
-                if (surface_supported && (families[i].queueFlags & vk::QueueFlagBits::eGraphics)) {
+                if (surface_supported &&
+                        (families[i].queueFlags & vk::QueueFlagBits::eGraphics) &&
+                        (families[i].queueFlags & vk::QueueFlagBits::eCompute))
+                {
                         return i;
                 }
         }

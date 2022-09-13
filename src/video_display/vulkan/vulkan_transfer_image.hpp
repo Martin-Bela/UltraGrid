@@ -50,25 +50,11 @@ enum class Format{
         YUYV8_422,
         YUYV16_422,
         UYVA16_422_conv,
-        DXT1,
         RGB10A2_conv,
         RGBA16
 };
 
-constexpr inline bool is_yCbCr_format(Format format) { //REMOVE THIS FUNCTION
-        using F = Format;
-        std::array yCbCr_formats{F::UYVY8_422, F::YUYV8_422, F::YUYV16_422};
-        for(Format f : yCbCr_formats){
-                if (f == format){
-                        return true;
-                }
-        }
-        return false;
-}
-
-constexpr inline bool is_compressed_format(Format format) {
-        return format == Format::DXT1;
-}
+struct ImageDescription;
 
 } // vulkan_display-----------------------------------------
 
@@ -95,7 +81,6 @@ inline const FormatInfo& format_info(vulkan_display::Format format){
 {F::YUYV8_422,       VkF::eG8B8G8R8422Unorm,     },
 {F::YUYV16_422,      VkF::eG16B16G16R16422Unorm, },
 {F::UYVA16_422_conv, VkF::eR16G16B16A16Uint,     {"UYVA16_conv"}, VkF::eR16G16B16A16Sfloat},
-{F::DXT1,            VkF::eBc1RgbSrgbBlock,      },
 {F::RGB10A2_conv,    VkF::eR8G8B8A8Uint,         {"RGB10A2_conv"}, VkF::eA2B10G10R10UnormPack32},
 {F::RGBA16,          VkF::eR16G16B16A16Snorm     },
         }};
@@ -104,6 +89,8 @@ inline const FormatInfo& format_info(vulkan_display::Format format){
         assert(result.format == format);
         return result;
 }
+
+vk::Extent2D get_buffer_size(const vulkan_display::ImageDescription& description);
 
 } //vulkan_display_detail
 
@@ -203,8 +190,6 @@ public:
                 return image_description;
         }
         
-        static bool is_image_description_supported(vk::PhysicalDevice gpu, vulkan_display::ImageDescription description);
-
         void init(vk::Device device, uint32_t id);
 
         void recreate(VulkanContext& context, vulkan_display::ImageDescription description);

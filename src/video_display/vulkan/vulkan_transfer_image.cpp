@@ -90,26 +90,11 @@ constexpr vk::ImageCreateFlags image_create_flags = {};
 
 namespace vulkan_display_detail{
 
-bool TransferImageImpl::is_image_description_supported(vk::PhysicalDevice gpu, ImageDescription description) {
-        vk::ImageFormatProperties properties;
-        auto result = gpu.getImageFormatProperties(
-                format_info(description.format).buffer_format,
-                vk::ImageType::e2D,
-                image_tiling,
-                image_usage_flags,
-                image_create_flags,
-                &properties);
-        switch (result){
-                case vk::Result::eSuccess:
-                        break;
-                case vk::Result::eErrorFormatNotSupported:
-                        return false;
-                default:
-                        throw VulkanError{"Error queriing image properties."};
+vk::Extent2D get_buffer_size(const vulkan_display::ImageDescription& description){
+        if (description.format == vulkan_display::Format::UYVY8_422_conv){
+                return { description.size.width / 2, description.size.height };
         }
-
-        return description.size.height <= properties.maxExtent.height
-                && description.size.width <= properties.maxExtent.width;
+        return description.size;
 }
 
 void TransferImageImpl::init(vk::Device device, uint32_t id) {
@@ -211,12 +196,7 @@ void TransferImageImpl::recreate(VulkanContext& context, ImageDescription descri
         
         auto device = context.get_device();
 
-        vk::Extent2D buffer_size = description.size;
-        if (description.format == Format::UYVY8_422_conv){
-                buffer_size.width /= 2;
-        }
-
-        buffer.init(context, buffer_size, description.format_info().buffer_format, vk::ImageUsageFlagBits::eSampled, vk::AccessFlagBits::eHostWrite,
+        buffer.init(context, get_buffer_size(description), description.format_info().buffer_format, vk::ImageUsageFlagBits::eSampled, vk::AccessFlagBits::eHostWrite,
                 InitialImageData::preinitialised, MemoryLocation::host_local);
         
         void* void_ptr = device.mapMemory(buffer.memory, 0, buffer.byte_size);

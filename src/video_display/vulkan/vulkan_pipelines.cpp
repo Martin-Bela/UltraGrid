@@ -193,7 +193,9 @@ void ConversionPipeline::create(vk::Device device, const std::filesystem::path& 
 void ConversionPipeline::destroy(vk::Device device){
         if(valid){
                 valid = false;
-                device.destroy(yCbCr_conversion);
+                if (yCbCr_conversion){
+                        device.destroy(yCbCr_conversion);
+                }
                 device.destroy(sampler);
                 device.destroy(compute_shader);
                 device.destroy(pipeline_layout);
@@ -380,7 +382,9 @@ void RenderPipeline::destroy(vk::Device device){
                 device.destroy(fragment_shader);
                 device.destroy(vertex_shader);
                 device.destroy(sampler);
-                device.destroy(yCbCr_conversion);
+                if(yCbCr_conversion){
+                        device.destroy(yCbCr_conversion);
+                }
         }
 }
 
@@ -419,7 +423,9 @@ void RenderPipeline::reconfigure(vk::Device device, vk::Format format){
         device.destroy(pipeline_layout);
         device.destroy(image_desc_set_layout);
         device.destroy(sampler);
-        device.destroy(yCbCr_conversion);
+        if (yCbCr_conversion){
+                device.destroy(yCbCr_conversion);
+        }
 
         yCbCr_conversion = createYCbCrConversion(device, format);
         sampler = create_sampler(device, yCbCr_conversion, vk::Filter::eLinear);

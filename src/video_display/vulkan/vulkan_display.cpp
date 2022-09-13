@@ -58,11 +58,6 @@ constexpr bool is_yCbCr_format(vk::Format format) {
         return VK_FORMAT_G8B8G8R8_422_UNORM <= f && f <= VK_FORMAT_G16_B16_R16_3PLANE_444_UNORM;
 }
 
-constexpr bool is_compressed_format(vk::Format format) {
-        auto f = static_cast<VkFormat>(format);
-        return VK_FORMAT_BC1_RGB_UNORM_BLOCK <= f && f <= VK_FORMAT_ASTC_12x12_SRGB_BLOCK;
-}
-
 vk::PresentModeKHR get_present_mode(bool vsync_enabled, bool tearing_permitted){
         using Mode = vk::PresentModeKHR;
         if (vsync_enabled){
@@ -201,6 +196,34 @@ public:
         AtScopeExit& operator=(AtScopeExit&& other) = delete;
 };
 
+/** requires lock in multithreaded context!! **/
+bool is_format_supported(vk::PhysicalDevice gpu, bool is_yCbCr_supported, vk::Extent2D size, vk::Format format,
+        vk::ImageTiling tiling, vk::ImageUsageFlags usage_flags)
+{
+        if (!is_yCbCr_supported && is_yCbCr_format(format)){
+                return false;
+        }
+        vk::ImageFormatProperties properties;
+        auto result = gpu.getImageFormatProperties(
+                format,
+                vk::ImageType::e2D,
+                tiling,
+                usage_flags,
+                {},
+                &properties);
+        switch (result){
+                case vk::Result::eSuccess:
+                        break;
+                case vk::Result::eErrorFormatNotSupported:
+                        return false;
+                default:
+                        throw VulkanError{"Error queriing image properties."};
+        }
+
+        return size.height <= properties.maxExtent.height
+                && size.width <= properties.maxExtent.width;
+}
+
 
 } //namespace -------------------------------------------------------------
 
@@ -277,11 +300,22 @@ void VulkanDisplay::destroy() {
 }
 
 bool VulkanDisplay::is_image_description_supported(ImageDescription description) {
-        if (!is_yCbCr_supported() && is_yCbCr_format(description.format)) {
-                return false;
-        }
         std::scoped_lock lock(device_mutex);
-        return TransferImageImpl::is_image_description_supported(context.get_gpu(), description);
+
+        auto& format_info = description.format_info();
+        if(!is_format_supported(context.get_gpu(), context.is_yCbCr_supported(), get_buffer_size(description),
+                format_info.buffer_format, vk::ImageTiling::eLinear, vk::ImageUsageFlagBits::eSampled))
+        {
+                return false;;
+        }
+
+        if (format_info.conversion_image_format == vk::Format::eUndefined){
+                return true;
+        }
+
+        return is_format_supported(context.get_gpu(), context.is_yCbCr_supported(), description.size,
+                format_info.conversion_image_format, vk::ImageTiling::eOptimal,
+                vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage);
 }
 
 void VulkanDisplay::bind_transfer_image(TransferImageImpl& transfer_image, PerFrameResources& resources) {
@@ -384,15 +418,6 @@ TransferImageImpl& VulkanDisplay::acquire_transfer_image() {
 
 TransferImage VulkanDisplay::acquire_image(ImageDescription description) {
         assert(description.size.width * description.size.height != 0);
-        if (!context.is_yCbCr_supported()) {
-                if (is_yCbCr_format(description.format)) {
-                        std::string error_msg{ "YCbCr formats are not supported."sv };
-                        if (get_vulkan_version() == VK_API_VERSION_1_0) {
-                                error_msg.append("\nVulkan 1.1 or higher is needed for YCbCr support."sv);
-                        }
-                        throw VulkanError{error_msg};
-                }
-        }
         TransferImageImpl& transfer_image = acquire_transfer_image();
         assert(transfer_image.get_id() != TransferImageImpl::NO_ID);
 
