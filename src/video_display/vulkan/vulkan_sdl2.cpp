@@ -808,7 +808,7 @@ struct CodecToVulkanFormat{
 // Ultragrid to VulkanDisplay Format mapping
 const std::vector<CodecToVulkanFormat>& get_ug_to_vkd_format_mapping(state_vulkan_sdl2& s){
         //the backup vkd::Format must follow the corrresponding native vkd::Format 
-        constexpr std::array<CodecToVulkanFormat, 9> format_mapping {{
+        constexpr std::array<CodecToVulkanFormat, 10> format_mapping {{
                 {RGBA, vkd::Format::RGBA8_Srgb},
                 {RGB,  vkd::Format::RGB8_Srgb},
                 {UYVY, vkd::Format::UYVY8_422},
@@ -817,7 +817,8 @@ const std::vector<CodecToVulkanFormat>& get_ug_to_vkd_format_mapping(state_vulka
                 {Y216, vkd::Format::YUYV16_422},
                 {Y416, vkd::Format::UYVA16_422_conv},
                 {DXT1, vkd::Format::DXT1},
-                {R10k, vkd::Format::RGB10A2_conv}
+                {R10k, vkd::Format::RGB10A2_conv},
+                {RG48, vkd::Format::RGBA16},
         }};
 
         static std::vector<CodecToVulkanFormat> supported_formats_mapping{};
