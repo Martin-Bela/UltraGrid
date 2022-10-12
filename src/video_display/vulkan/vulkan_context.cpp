@@ -188,6 +188,51 @@ vk::CompositeAlphaFlagBitsKHR get_composite_alpha(vk::CompositeAlphaFlagsKHR cap
         return static_cast<vk::CompositeAlphaFlagBitsKHR>(result);
 }
 
+template<typename T>
+bool contains(const std::vector<T>& vec, const T& key){
+        return std::find(vec.begin(), vec.end(), key) != vec.end();
+}
+
+vk::SurfaceFormatKHR get_surface_format(vk::PhysicalDevice gpu, vk::SurfaceKHR surface) {
+        std::vector<vk::SurfaceFormatKHR> available_formats = gpu.getSurfaceFormatsKHR(surface);
+
+        std::array<vk::SurfaceFormatKHR, 5> preferred_formats {{
+                {vk::Format::eA2B10G10R10UnormPack32, vk::ColorSpaceKHR::eSrgbNonlinear},
+                {vk::Format::eB8G8R8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear},
+                {vk::Format::eR8G8B8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear},
+                {vk::Format::eB8G8R8A8Unorm, vk::ColorSpaceKHR::eSrgbNonlinear},
+                {vk::Format::eR8G8B8A8Unorm, vk::ColorSpaceKHR::eSrgbNonlinear},
+        }};
+
+        for(auto& format: preferred_formats){
+                if (contains(available_formats, format)) {
+                        return format;
+                }
+        }
+
+        return available_formats[0];
+}
+
+vk::PresentModeKHR get_present_mode(vk::PhysicalDevice gpu, vk::SurfaceKHR surface, vk::PresentModeKHR preferred_present_mode) {
+        std::vector<vk::PresentModeKHR> modes = gpu.getSurfacePresentModesKHR(surface);
+
+        vk::PresentModeKHR preferred = preferred_present_mode;
+        if (contains(modes, preferred)) {
+                return preferred;
+        }
+        
+        // Mailbox is alternative to Immediate, Fifo to everything else
+        auto alternative = (preferred == vk::PresentModeKHR::eImmediate 
+                ? vk::PresentModeKHR::eMailbox
+                : vk::PresentModeKHR::eFifo);
+
+        if (contains(modes, alternative)) {
+                return alternative;
+        }
+
+        return modes[0];
+}
+
 } //namespace ------------------------------------------------------------------------
 
 
@@ -342,48 +387,12 @@ void VulkanContext::create_logical_device() {
         device = gpu.createDevice(device_info);
 }
 
-void VulkanContext::get_present_mode() {
-        std::vector<vk::PresentModeKHR> modes = gpu.getSurfacePresentModesKHR(surface);
-
-        vk::PresentModeKHR preferred = preferred_present_mode;
-        if (std::any_of(modes.begin(), modes.end(), [preferred](auto mode) { return mode == preferred; })) {
-                swapchain_atributes.mode = preferred;
-                return;
-        }
-        
-        // Mailbox is alternative to Immediate, Fifo to everything else
-        auto alternative = (preferred == vk::PresentModeKHR::eImmediate 
-                ? vk::PresentModeKHR::eMailbox
-                : vk::PresentModeKHR::eFifo);
-
-        if (std::any_of(modes.begin(), modes.end(), [alternative](auto mode) { return mode == alternative; })) {
-                swapchain_atributes.mode = alternative;
-                return;
-        }
-
-        swapchain_atributes.mode = modes[0];
-}
-
-void VulkanContext::get_surface_format() {
-        std::vector<vk::SurfaceFormatKHR> formats = gpu.getSurfaceFormatsKHR(surface);
-
-        vk::SurfaceFormatKHR default_format{};
-        default_format.format = vk::Format::eB8G8R8A8Srgb;
-        default_format.colorSpace = vk::ColorSpaceKHR::eSrgbNonlinear;
-
-        if (std::any_of(formats.begin(), formats.end(), [default_format](auto& format) {return format == default_format; })) {
-                swapchain_atributes.format = default_format;
-                return;
-        }
-        swapchain_atributes.format = formats[0];
-}
-
 void VulkanContext::create_swap_chain(vk::SwapchainKHR old_swapchain) {
         auto& capabilities = swapchain_atributes.capabilities;
         capabilities = gpu.getSurfaceCapabilitiesKHR(surface);
 
-        get_present_mode();
-        get_surface_format();
+        swapchain_atributes.format = get_surface_format(gpu, surface);
+        swapchain_atributes.mode = get_present_mode(gpu, surface, preferred_present_mode);
 
         window_size.width = std::clamp(window_size.width,
                 capabilities.minImageExtent.width,
