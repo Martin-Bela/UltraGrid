@@ -105,6 +105,12 @@ inline vk::ImageViewCreateInfo default_image_view_create_info(vk::Format format)
         return image_view_info;
 }
 
+struct SwapchainImage {
+        vk::Image image;
+        vk::ImageView view;
+        vk::Framebuffer framebuffer;
+};
+
 class VulkanContext {
         vk::Instance instance;
         std::unique_ptr<vk::DispatchLoaderDynamic> dynamic_dispatcher{};
@@ -126,11 +132,6 @@ class VulkanContext {
                 vk::PresentModeKHR mode = vk::PresentModeKHR::eFifo;
         } swapchain_atributes;
 
-        struct SwapchainImage {
-                vk::Image image;
-                vk::ImageView view;
-                vk::Framebuffer framebuffer;
-        };
         std::vector<SwapchainImage> swapchain_images{};
 
         vk::Extent2D window_size{ 0, 0 };
@@ -148,13 +149,9 @@ public:
         vk::Extent2D get_window_size() { return window_size; }
         size_t get_swapchain_image_count(){ return swapchain_images.size(); }
 private:
-        void create_physical_device(uint32_t gpu_index);
-
         void create_logical_device();
 
         void create_swap_chain(vk::SwapchainKHR old_swap_chain = vk::SwapchainKHR{});
-
-        void create_swapchain_views();
 
         void destroy_swapchain_views() {
                 for (auto& image : swapchain_images) {

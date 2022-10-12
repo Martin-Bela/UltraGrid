@@ -233,6 +233,48 @@ vk::PresentModeKHR get_present_mode(vk::PhysicalDevice gpu, vk::SurfaceKHR surfa
         return modes[0];
 }
 
+void log_gpu_info(vk::PhysicalDeviceProperties gpu_properties, uint32_t vulkan_version){
+        log_msg("Vulkan uses GPU called: "s + &gpu_properties.deviceName[0]);
+        std::string msg; //todo C++20 use std::format
+        msg.reserve(20);
+        msg += ("Used Vulkan API: ");
+        msg += std::to_string(VK_VERSION_MAJOR(vulkan_version));
+        msg += ".";
+        msg += std::to_string(VK_VERSION_MINOR(vulkan_version));
+        log_msg(msg);
+}
+
+vk::PhysicalDevice create_physical_device(vk::Instance instance, vk::SurfaceKHR surface, uint32_t gpu_index) {
+        assert(instance);
+        assert(surface);
+        std::vector<vk::PhysicalDevice> gpus = instance.enumeratePhysicalDevices();
+
+        if (gpu_index == vulkan_display::no_gpu_selected) {
+                return choose_suitable_GPU(gpus, surface);
+        } else {
+                auto gpu = choose_gpu_by_index(gpus, gpu_index);
+                is_gpu_suitable(true, gpu, surface);
+                return gpu;
+        }
+}
+
+void create_swapchain_views(vk::Device device, vk::SwapchainKHR swapchain, vk::Format format, std::vector<SwapchainImage>& swapchain_images) {
+        std::vector<vk::Image> images = device.getSwapchainImagesKHR(swapchain);
+        auto image_count = static_cast<uint32_t>(images.size());
+
+        vk::ImageViewCreateInfo image_view_info = 
+                default_image_view_create_info(format);
+
+        swapchain_images.resize(image_count);
+        for (uint32_t i = 0; i < image_count; i++) {
+                SwapchainImage& swapchain_image = swapchain_images[i];
+                swapchain_image.image = images[i];
+
+                image_view_info.setImage(swapchain_image.image);
+                swapchain_image.view = device.createImageView(image_view_info);
+        }
+}
+
 } //namespace ------------------------------------------------------------------------
 
 
@@ -327,32 +369,6 @@ void VulkanInstance::destroy() {
 
 namespace vulkan_display_detail { //------------------------------------------------------------------------
 
-void VulkanContext::create_physical_device(uint32_t gpu_index) {
-        assert(instance);
-        assert(surface);
-        std::vector<vk::PhysicalDevice> gpus = instance.enumeratePhysicalDevices();
-
-        if (gpu_index == vulkan_display::no_gpu_selected) {
-                gpu = choose_suitable_GPU(gpus, surface);
-        } else {
-                gpu = choose_gpu_by_index(gpus, gpu_index);
-                is_gpu_suitable(true, gpu, surface);
-        }
-        auto properties = gpu.getProperties();
-        if (properties.apiVersion < VK_API_VERSION_1_1) {
-                vulkan_version = VK_API_VERSION_1_0;
-        }
-        std::string device_name = properties.deviceName;
-        log_msg("Vulkan uses GPU called: "s + device_name);
-        std::string msg; //todo C++20 use std::format
-        msg.reserve(20);
-        msg += ("Used Vulkan API: ");
-        msg += std::to_string(VK_VERSION_MAJOR(vulkan_version));
-        msg += ".";
-        msg += std::to_string(VK_VERSION_MINOR(vulkan_version));
-        log_msg(msg);
-}
-
 void VulkanContext::create_logical_device() {
         assert(gpu);
         assert(queue_family_index != no_queue_index_found);
@@ -398,10 +414,11 @@ void VulkanContext::create_swap_chain(vk::SwapchainKHR old_swapchain) {
         swapchain_atributes.format = get_surface_format(gpu, surface);
         swapchain_atributes.mode = get_present_mode(gpu, surface, preferred_present_mode);
 
-        window_size.width = std::clamp(window_size.width,
+        vk::Extent2D swapchain_image_size;
+        swapchain_image_size.width = std::clamp(window_size.width,
                 capabilities.minImageExtent.width,
                 capabilities.maxImageExtent.width);
-        window_size.height = std::clamp(window_size.height,
+        swapchain_image_size.height = std::clamp(window_size.height,
                 capabilities.minImageExtent.height,
                 capabilities.maxImageExtent.height);
 
@@ -418,7 +435,7 @@ void VulkanContext::create_swap_chain(vk::SwapchainKHR old_swapchain) {
                 .setImageColorSpace(swapchain_atributes.format.colorSpace)
                 .setPresentMode(swapchain_atributes.mode)
                 .setMinImageCount(image_count)
-                .setImageExtent(window_size)
+                .setImageExtent(swapchain_image_size)
                 .setImageArrayLayers(1)
                 .setImageUsage(vk::ImageUsageFlagBits::eColorAttachment)
                 .setImageSharingMode(vk::SharingMode::eExclusive)
@@ -427,23 +444,6 @@ void VulkanContext::create_swap_chain(vk::SwapchainKHR old_swapchain) {
                 .setClipped(true)
                 .setOldSwapchain(old_swapchain);
         swapchain = device.createSwapchainKHR(swapchain_info);
-}
-
-void VulkanContext::create_swapchain_views() {
-        std::vector<vk::Image> images = device.getSwapchainImagesKHR(swapchain);
-        auto image_count = static_cast<uint32_t>(images.size());
-
-        vk::ImageViewCreateInfo image_view_info = 
-                default_image_view_create_info(swapchain_atributes.format.format);
-
-        swapchain_images.resize(image_count);
-        for (uint32_t i = 0; i < image_count; i++) {
-                SwapchainImage& swapchain_image = swapchain_images[i];
-                swapchain_image.image = images[i];
-
-                image_view_info.setImage(swapchain_image.image);
-                swapchain_image.view = device.createImageView(image_view_info);
-        }
 }
 
 void VulkanContext::init(vulkan_display::VulkanInstance&& instance, VkSurfaceKHR surface,
@@ -461,13 +461,22 @@ void VulkanContext::init(vulkan_display::VulkanInstance&& instance, VkSurfaceKHR
         this->preferred_present_mode = preferredMode;
         window_size = vk::Extent2D{ parameters.width, parameters.height };
 
-        create_physical_device(gpu_index);
+        gpu = create_physical_device(this->instance, surface, gpu_index);
+
         queue_family_index = choose_queue_family_index(gpu, surface);
         assert(queue_family_index != no_queue_index_found);
+
         create_logical_device();
+        auto properties = gpu.getProperties();
+        if (properties.apiVersion < VK_API_VERSION_1_1) {
+                vulkan_version = VK_API_VERSION_1_0;
+        }
+
+        log_gpu_info(properties, vulkan_version);
+        
         queue = device.getQueue(queue_family_index, 0);
         create_swap_chain();
-        create_swapchain_views();
+        create_swapchain_views(device, swapchain, swapchain_atributes.format.format, swapchain_images);
 }
 
 void VulkanContext::create_framebuffers(vk::RenderPass render_pass) {
@@ -498,7 +507,7 @@ void VulkanContext::recreate_swapchain(WindowParameters parameters, vk::RenderPa
         vk::SwapchainKHR old_swap_chain = swapchain;
         create_swap_chain(old_swap_chain);
         device.destroySwapchainKHR(old_swap_chain);
-        create_swapchain_views();
+        create_swapchain_views(device, swapchain, swapchain_atributes.format.format, swapchain_images);
         create_framebuffers(render_pass);
 }
 
