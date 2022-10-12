@@ -384,6 +384,10 @@ void VulkanContext::create_logical_device() {
                 }
         }
 
+        //reset features
+        features2 = vk::PhysicalDeviceFeatures2{};
+        features2.setPNext(&yCbCr_feature);
+
         device = gpu.createDevice(device_info);
 }
 
