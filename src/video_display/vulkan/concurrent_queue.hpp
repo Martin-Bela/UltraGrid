@@ -37,20 +37,26 @@
 
 #pragma once
 
-#include "ext-deps/readerwriterqueue/readerwritercircularbuffer.h"
-#include "ext-deps/readerwriterqueue/readerwriterqueue.h"
-
 // Define one of the following macros
 //#define VULKAN_DISPAY_USE_MOODY_CAMEL_QUEUE
 //#define VULKAN_DISPAY_USE_POINTER_QUEUE
 #define VULKAN_DISPAY_USE_MUTEX_QUEUE
 
+#include <cstdint>
+
 namespace vulkan_display_detail{
 
 constexpr size_t unlimited_size = SIZE_MAX;
 
+}
 
 #if defined(VULKAN_DISPAY_USE_POINTER_QUEUE) || defined(VULKAN_DISPAY_USE_MOODY_CAMEL_QUEUE)
+
+#include "ext-deps/readerwriterqueue/readerwritercircularbuffer.h"
+#include "ext-deps/readerwriterqueue/readerwriterqueue.h"
+
+namespace vulkan_display_detail{
+
 template<typename T, size_t size = unlimited_size>
 class ConcurrentQueue{
         moodycamel::BlockingReaderWriterCircularBuffer<T> inner{size};
@@ -63,7 +69,7 @@ public:
                 return result;
         }
 
-        T wait_pop(T& item){
+        T wait_pop(){
                 T result{};
                 inner.wait_dequeue(result);
                 return result;
@@ -124,9 +130,13 @@ public:
 
         void wait_push(T item){ inner.enqueue(std::move(item)); }
 };
+
+} //namespace vulkan_display_detail
 #endif
 
 #ifdef VULKAN_DISPAY_USE_POINTER_QUEUE
+
+namespace vulkan_display_detail{
 template<typename T>
 class ConcurrentQueue<T, 1>{
         std::atomic<T> data{};
@@ -172,9 +182,9 @@ public:
                 data = item;
         }
 };
-#endif
 
-}
+} //namespace vulkan_display_detail
+#endif
 
 
 #ifdef VULKAN_DISPAY_USE_MUTEX_QUEUE
@@ -266,7 +276,7 @@ public:
         }
 };
 
-}
+} //namespace vulkan_display_detail
 #endif
 
 
