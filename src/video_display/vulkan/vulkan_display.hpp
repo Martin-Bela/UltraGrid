@@ -118,7 +118,6 @@ class VulkanDisplay {
         };
         std::queue<RenderedImage> rendered_images;
 
-        bool minimalised = false;
         bool destroyed = false;
 private:
         void bind_transfer_image(TransferImageImpl& image, detail::PerFrameResources& resources);

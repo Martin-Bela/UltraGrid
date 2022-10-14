@@ -42,13 +42,13 @@ using namespace vulkan_display;
 
 namespace {
 
-constexpr vk::DeviceSize add_padding(vk::DeviceSize size, vk::DeviceSize allignment) {
+/*constexpr vk::DeviceSize add_padding(vk::DeviceSize size, vk::DeviceSize allignment) {
         vk::DeviceSize remainder = size % allignment;
         if (remainder == 0) {
                 return size;
         }
         return size + allignment - remainder;
-}
+}*/
 
 
 /**
@@ -83,9 +83,6 @@ uint32_t get_memory_type(
         throw VulkanError{"No available memory for transfer images found."};
 }
 
-constexpr vk::ImageTiling image_tiling = vk::ImageTiling::eLinear;
-const vk::ImageUsageFlags image_usage_flags = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst;
-constexpr vk::ImageCreateFlags image_create_flags = {};
 } //namespace -------------------------------------------------------------
 
 namespace vulkan_display_detail{
@@ -140,7 +137,6 @@ void Image2D::init(VulkanContext& context, vk::Extent2D size, vk::Format format,
         vk::Device device = context.get_device();
         vk::ImageCreateInfo image_info{};
         image_info
-                .setFlags(image_create_flags)
                 .setImageType(vk::ImageType::e2D)
                 .setExtent(vk::Extent3D{ size, 1 })
                 .setMipLevels(1)
