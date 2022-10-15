@@ -50,7 +50,13 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
         const VkDebugUtilsMessengerCallbackDataEXT* callback_data,
         [[maybe_unused]] void* user_data)
 {
-        log_msg("validation layer: "s + callback_data->pMessage);
+        LogLevel level = LogLevel::notice;
+        if      (VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT & message_severity)   level = LogLevel::error;
+        else if (VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT & message_severity) level = LogLevel::warning;
+        else if (VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT & message_severity)    level = LogLevel::info;
+        else if (VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT & message_severity) level = LogLevel::verbose;
+
+        log_msg(level, "validation layer: "s + callback_data->pMessage);
 
         if (message_type != VkDebugUtilsMessageTypeFlagBitsEXT::VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT){
                 //assert(false);
@@ -234,14 +240,14 @@ vk::PresentModeKHR get_present_mode(vk::PhysicalDevice gpu, vk::SurfaceKHR surfa
 }
 
 void log_gpu_info(vk::PhysicalDeviceProperties gpu_properties, uint32_t vulkan_version){
-        log_msg("Vulkan uses GPU called: "s + &gpu_properties.deviceName[0]);
-        std::string msg; //todo C++20 use std::format
-        msg.reserve(20);
-        msg += ("Used Vulkan API: ");
-        msg += std::to_string(VK_VERSION_MAJOR(vulkan_version));
-        msg += ".";
-        msg += std::to_string(VK_VERSION_MINOR(vulkan_version));
-        log_msg(msg);
+        log_msg(LogLevel::info, "Vulkan uses GPU called: "s + &gpu_properties.deviceName[0]);
+        std::string msg = concat(32, std::array{
+                "Used Vulkan API: "s,
+                std::to_string(VK_VERSION_MAJOR(vulkan_version)),
+                "."s,
+                std::to_string(VK_VERSION_MINOR(vulkan_version))
+                });
+        log_msg(LogLevel::info, msg);
 }
 
 vk::PhysicalDevice create_physical_device(vk::Instance instance, vk::SurfaceKHR surface, uint32_t gpu_index) {
@@ -280,7 +286,7 @@ void create_swapchain_views(vk::Device device, vk::SwapchainKHR swapchain, vk::F
 
 namespace vulkan_display {
 
-void VulkanInstance::init(std::vector<const char*>& required_extensions, bool enable_validation, std::function<void(std::string_view sv)> logging_function) {
+void VulkanInstance::init(std::vector<const char*>& required_extensions, bool enable_validation, std::function<void(LogLevel, std::string_view sv)> logging_function) {
         log_msg = std::move(logging_function);
         std::vector<const char*> validation_layers{};
         if (enable_validation) {
@@ -396,7 +402,7 @@ void VulkanContext::create_logical_device() {
                 if (yCbCr_feature.samplerYcbcrConversion) {
                         yCbCr_supported = true;
                         device_info.setPNext(&features2);
-                        log_msg("yCbCr feature supported.");
+                        log_msg(LogLevel::info, "yCbCr feature supported.");
                 }
         }
 
@@ -426,6 +432,16 @@ void VulkanContext::create_swap_chain(vk::SwapchainKHR old_swapchain) {
         if (capabilities.maxImageCount != 0) {
                 image_count = std::min(image_count, capabilities.maxImageCount);
         }
+
+        auto msg = concat(64, std::array{
+                "Recreating swapchain, size: "s,
+                std::to_string(swapchain_image_size.width),
+                "x"s,
+                std::to_string(swapchain_image_size.height),
+                ", format: "s,
+                vk::to_string(swapchain_atributes.format.format)
+        });
+        log_msg(LogLevel::info, msg);
 
         //assert(capabilities.supportedUsageFlags & vk::ImageUsageFlagBits::eTransferDst);
         vk::SwapchainCreateInfoKHR swapchain_info{};
@@ -497,8 +513,6 @@ void VulkanContext::create_framebuffers(vk::RenderPass render_pass) {
 
 void VulkanContext::recreate_swapchain(WindowParameters parameters, vk::RenderPass render_pass) {
         window_size = vk::Extent2D{ parameters.width, parameters.height };
-        
-        log_msg("Recreating  swapchain");
 
         device.waitIdle();
 
