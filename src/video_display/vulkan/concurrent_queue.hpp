@@ -37,162 +37,15 @@
 
 #pragma once
 
-// Define one of the following macros
-//#define VULKAN_DISPAY_USE_MOODY_CAMEL_QUEUE
-//#define VULKAN_DISPAY_USE_POINTER_QUEUE
-#define VULKAN_DISPAY_USE_MUTEX_QUEUE
-
 #include <cstdint>
-
-namespace vulkan_display_detail{
-
-constexpr size_t unlimited_size = SIZE_MAX;
-
-}
-
-#if defined(VULKAN_DISPAY_USE_POINTER_QUEUE) || defined(VULKAN_DISPAY_USE_MOODY_CAMEL_QUEUE)
-
-#include "ext-deps/readerwriterqueue/readerwritercircularbuffer.h"
-#include "ext-deps/readerwriterqueue/readerwriterqueue.h"
-
-namespace vulkan_display_detail{
-
-template<typename T, size_t size = unlimited_size>
-class ConcurrentQueue{
-        moodycamel::BlockingReaderWriterCircularBuffer<T> inner{size};
-public:
-        T try_pop(){
-                T result{};
-                if (!inner.try_dequeue(result)){
-                        return T{};
-                }
-                return result;
-        }
-
-        T wait_pop(){
-                T result{};
-                inner.wait_dequeue(result);
-                return result;
-        }
-
-        template<typename Rep, typename Period>
-        T timed_pop(std::chrono::duration<Rep, Period> timeout){
-                T result{};
-                inner.wait_dequeue_timed(result, timeout);
-                return result;
-        }
-
-        T force_push(T item){
-                if (!try_push(std::move(item))){
-                        return item;
-                }
-                return {};
-        }
-
-        bool try_push(T item){ return inner.try_enqueue(std::move(item)); }
-
-        void wait_push(T item){ inner.wait_enqueue(std::move(item)); }
-};
-
-template<typename T>
-class ConcurrentQueue<T, unlimited_size>{
-        moodycamel::BlockingReaderWriterQueue<T> inner{};
-public:
-        T try_pop(){
-                T result{};
-                if (!inner.try_dequeue(result)){
-                        return T{};
-                }
-                return result;
-        }
-
-        T wait_pop(){
-                T result{};
-                inner.wait_dequeue(result);
-                return result;
-        }
-
-        template<typename Rep, typename Period>
-        T timed_pop(std::chrono::duration<Rep, Period> timeout){
-                T result{};
-                inner.wait_dequeue_timed(result, timeout);
-                return result;
-        }
-
-        T force_push(T item){
-                if (!try_push(std::move(item))){
-                        return item;
-                }
-                return {};
-        }
-
-        bool try_push(T item){ return inner.try_enqueue(std::move(item)); }
-
-        void wait_push(T item){ inner.enqueue(std::move(item)); }
-};
-
-} //namespace vulkan_display_detail
-#endif
-
-#ifdef VULKAN_DISPAY_USE_POINTER_QUEUE
-
-namespace vulkan_display_detail{
-template<typename T>
-class ConcurrentQueue<T, 1>{
-        std::atomic<T> data{};
-        static constexpr T null{};
-public:
-        T try_pop(){
-                return data.exchange(null);
-        }
-
-        T wait_pop(){
-                T result = try_pop();
-                while(result == null) {
-                        result = try_pop();
-                }
-                return result;
-        }
-
-        template<typename Rep, typename Period>
-        T timed_pop(std::chrono::duration<Rep, Period> timeout){
-                // In C++20, this might be implemented with data.wait(...)
-                // I'm not sure if it's a good idea though - tests are needed
-                auto beginning = std::chrono::steady_clock::now();
-                T result = data.exchange(null);
-                while(result == null && std::chrono::steady_clock::now() - beginning < timeout){
-                        result = data.exchange(null);
-                }
-                return result;
-        }
-
-        /** returns valid T if enqueing removed item  or T{} otherwise **/
-        T force_push(T item){
-                auto removed = data.exchange(item);
-                return removed;
-        }
-
-        bool try_push(T item){
-                auto expected = null;
-                return data.compare_exchange_strong(expected, item);
-        }
-
-        void wait_push(T item){
-                while(data != null){ };
-                data = item;
-        }
-};
-
-} //namespace vulkan_display_detail
-#endif
-
-
-#ifdef VULKAN_DISPAY_USE_MUTEX_QUEUE
 #include <condition_variable>
 #include <mutex>
 #include <queue>
 
+
 namespace vulkan_display_detail{
+
+constexpr size_t unlimited_size = SIZE_MAX;
 
 template<typename T, size_t max_size = unlimited_size>
 class ConcurrentQueue{
@@ -277,6 +130,6 @@ public:
 };
 
 } //namespace vulkan_display_detail
-#endif
+
 
 

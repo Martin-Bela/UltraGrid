@@ -448,23 +448,6 @@ bool VulkanDisplay::queue_image(TransferImage image, bool discardable) {
                 return true;
         }
         return false;
-        
-        /*if (filled_img_queue.try_push(image.get_transfer_image())){
-                return false;
-        }
-
-        available_images.push_back(image.get_transfer_image());
-        return true;
-        */
-        
-        /*if (discardable && filled_img_queue.size_approx() > filled_img_max_count){
-                available_images.push_back(image.get_transfer_image());
-                return true;
-        }
-        else{
-                filled_img_queue.wait_push(image.get_transfer_image());
-                return false;
-        }*/
 }
 
 void VulkanDisplay::reconfigure(const TransferImageImpl& transfer_image){
@@ -568,8 +551,8 @@ bool VulkanDisplay::display_queued_image() {
                 }
         }};
 
-
-        TransferImageImpl* transfer_image_ptr = filled_img_queue.try_pop();
+        // 24FPS (lowest expected framerate) has a period of approximately 42ms
+        TransferImageImpl* transfer_image_ptr = filled_img_queue.timed_pop(84ms);
         if (transfer_image_ptr == nullptr) {
                 return false;
         }
