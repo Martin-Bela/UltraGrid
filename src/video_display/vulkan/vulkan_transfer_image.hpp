@@ -43,8 +43,8 @@ namespace vulkan_display {
 
 enum class Format{
         uninitialized,
-        RGBA8_Srgb,
-        RGB8_Srgb,
+        RGBA8,
+        RGB8,
         UYVY8_422,
         UYVY8_422_conv,
         YUYV8_422,
@@ -74,8 +74,8 @@ inline const FormatInfo& format_info(vulkan_display::Format format){
 
         static std::array<FormatInfo, 11> format_infos = {{
 {F::uninitialized,   VkF::eUndefined,            },
-{F::RGBA8_Srgb,      VkF::eR8G8B8A8Srgb,         },
-{F::RGB8_Srgb,       VkF::eR8G8B8Srgb,           },
+{F::RGBA8,           VkF::eR8G8B8A8Unorm,        },
+{F::RGB8,            VkF::eR8G8B8Srgb,           },
 {F::UYVY8_422,       VkF::eB8G8R8G8422Unorm,     },
 {F::UYVY8_422_conv,  VkF::eR8G8B8A8Unorm,        {"UYVY8_conv"}, VkF::eR8G8B8A8Unorm},
 {F::YUYV8_422,       VkF::eG8B8G8R8422Unorm,     },

@@ -204,8 +204,6 @@ vk::SurfaceFormatKHR get_surface_format(vk::PhysicalDevice gpu, vk::SurfaceKHR s
 
         std::array<vk::SurfaceFormatKHR, 5> preferred_formats {{
                 {vk::Format::eA2B10G10R10UnormPack32, vk::ColorSpaceKHR::eSrgbNonlinear},
-                {vk::Format::eB8G8R8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear},
-                {vk::Format::eR8G8B8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear},
                 {vk::Format::eB8G8R8A8Unorm, vk::ColorSpaceKHR::eSrgbNonlinear},
                 {vk::Format::eR8G8B8A8Unorm, vk::ColorSpaceKHR::eSrgbNonlinear},
         }};

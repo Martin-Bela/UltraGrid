@@ -512,8 +512,8 @@ struct CodecToVulkanFormat{
 const std::vector<CodecToVulkanFormat>& get_ug_to_vkd_format_mapping(state_vulkan_sdl2& s){
         //the backup vkd::Format must follow the corrresponding native vkd::Format 
         constexpr std::array<CodecToVulkanFormat, 10> format_mapping {{
-                {RGBA, vkd::Format::RGBA8_Srgb},
-                {RGB,  vkd::Format::RGB8_Srgb},
+                {RGBA, vkd::Format::RGBA8},
+                {RGB,  vkd::Format::RGB8},
                 {UYVY, vkd::Format::UYVY8_422},
                 {UYVY, vkd::Format::UYVY8_422_conv},
                 {YUYV, vkd::Format::YUYV8_422},
@@ -576,7 +576,7 @@ int display_sdl2_reconfigure(void* state, video_desc desc) {
 void draw_splashscreen(state_vulkan_sdl2& s) {
         vkd::TransferImage image;
         try {
-                image = s.vulkan->acquire_image({splash_width, splash_height, vkd::Format::RGBA8_Srgb});
+                image = s.vulkan->acquire_image({splash_width, splash_height, vkd::Format::RGBA8});
         } 
         catch (std::exception& e) { log_and_exit_uv(e); return; }
         const char* source = splash_data;
