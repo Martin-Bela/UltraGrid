@@ -144,12 +144,14 @@ class VulkanContext {
                 vk::SurfaceCapabilitiesKHR capabilities;
                 vk::SurfaceFormatKHR format;
                 vk::PresentModeKHR mode = vk::PresentModeKHR::eFifo;
+                vk::Extent2D image_size;
         } swapchain_atributes;
 
         std::vector<SwapchainImage> swapchain_images{};
-
-        vk::Extent2D window_size{ 0, 0 };
         vk::PresentModeKHR preferred_present_mode;
+
+        using WindowParameters = vulkan_display::WindowParameters;
+        WindowParameters window_parameters;
 public:
         //getters
         uint32_t get_vulkan_version() const { return vulkan_version; }
@@ -160,8 +162,8 @@ public:
         vk::Queue get_queue() { return queue; }
         vk::SwapchainKHR get_swapchain() { return swapchain; }
         vk::Format get_swapchain_image_format() { return swapchain_atributes.format.format; };
-        vk::Extent2D get_window_size() { return window_size; }
-        size_t get_swapchain_image_count(){ return swapchain_images.size(); }
+        size_t get_swapchain_image_count() { return swapchain_images.size(); }
+        vk::Extent2D get_render_area_size() { return swapchain_atributes.image_size; }
 private:
         void create_logical_device();
 
@@ -170,18 +172,18 @@ private:
         void destroy_swapchain_views() {
                 for (auto& image : swapchain_images) {
                         device.destroy(image.view);
+                        image.view = nullptr;
                 }
         }
 
         void destroy_framebuffers() {
                 for (auto& image : swapchain_images) {
                         device.destroy(image.framebuffer);
+                        image.framebuffer = nullptr;
                 }
         }
 
 public:
-        using WindowParameters = vulkan_display::WindowParameters;
-
         VulkanContext() = default;
 
         void init(vulkan_display::VulkanInstance&& instance, VkSurfaceKHR surface,
@@ -198,7 +200,7 @@ public:
         }
 
         WindowParameters get_window_parameters() const {
-                return { window_size.width, window_size.height };
+                return window_parameters;
         }
 
         void recreate_swapchain(WindowParameters parameters, vk::RenderPass render_pass);

@@ -95,7 +95,7 @@ class RenderPipeline {
         vk::Sampler sampler{};
 
         RenderArea render_area{};
-        vk::Extent2D window_size{};
+        vk::Extent2D render_area_siza{};
         vk::Viewport viewport{};
         vk::Rect2D scissor{};
 
@@ -114,7 +114,7 @@ public:
 
         void destroy(vk::Device device);
 
-        void update_render_area(vk::Extent2D window_size, vk::Extent2D image_size);
+        void update_render_area(vk::Extent2D render_area_siza, vk::Extent2D image_size);
 
         /** Invalidates descriptor sets created from stored descriptor set layout**/
         void reconfigure(vk::Device device, vk::Format sampler);

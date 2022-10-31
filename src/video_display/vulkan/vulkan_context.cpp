@@ -419,12 +419,13 @@ void VulkanContext::create_swap_chain(vk::SwapchainKHR old_swapchain) {
         swapchain_atributes.mode = get_present_mode(gpu, surface, preferred_present_mode);
 
         vk::Extent2D swapchain_image_size;
-        swapchain_image_size.width = std::clamp(window_size.width,
+        swapchain_image_size.width = std::clamp(window_parameters.width,
                 capabilities.minImageExtent.width,
                 capabilities.maxImageExtent.width);
-        swapchain_image_size.height = std::clamp(window_size.height,
+        swapchain_image_size.height = std::clamp(window_parameters.height,
                 capabilities.minImageExtent.height,
                 capabilities.maxImageExtent.height);
+        swapchain_atributes.image_size = swapchain_image_size;
 
         uint32_t image_count = std::max(uint32_t{2}, capabilities.minImageCount);
         if (capabilities.maxImageCount != 0) {
@@ -473,7 +474,7 @@ void VulkanContext::init(vulkan_display::VulkanInstance&& instance, VkSurfaceKHR
 
         this->surface = surface;
         this->preferred_present_mode = preferredMode;
-        window_size = vk::Extent2D{ parameters.width, parameters.height };
+        window_parameters = parameters;
 
         gpu = create_physical_device(this->instance, surface, gpu_index);
 
@@ -497,8 +498,8 @@ void VulkanContext::create_framebuffers(vk::RenderPass render_pass) {
         vk::FramebufferCreateInfo framebuffer_info;
         framebuffer_info
                 .setRenderPass(render_pass)
-                .setWidth(window_size.width)
-                .setHeight(window_size.height)
+                .setWidth(swapchain_atributes.image_size.width)
+                .setHeight(swapchain_atributes.image_size.height)
                 .setLayers(1);
 
         for(auto& swapchain_image : swapchain_images){
@@ -510,7 +511,7 @@ void VulkanContext::create_framebuffers(vk::RenderPass render_pass) {
 }
 
 void VulkanContext::recreate_swapchain(WindowParameters parameters, vk::RenderPass render_pass) {
-        window_size = vk::Extent2D{ parameters.width, parameters.height };
+        window_parameters = parameters;
 
         device.waitIdle();
 

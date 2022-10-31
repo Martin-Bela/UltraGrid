@@ -506,8 +506,8 @@ void VulkanDisplay::reconfigure(const TransferImageImpl& transfer_image){
         }
 
         current_image_description = transfer_image.get_image_description();
-        auto parameters = context.get_window_parameters();
-        render_pipeline.update_render_area( { parameters.width, parameters.height }, current_image_description.size);
+        auto render_area_size = context.get_render_area_size();
+        render_pipeline.update_render_area( render_area_size, current_image_description.size);
 }
 
 bool VulkanDisplay::display_queued_image() {
@@ -580,8 +580,8 @@ bool VulkanDisplay::display_queued_image() {
                         return false;
                 }
                 context.recreate_swapchain(window_parameters, render_pipeline.get_render_pass());
-                render_pipeline.update_render_area( { window_parameters.width, window_parameters.height },
-                        current_image_description.size);
+                auto render_area_size = context.get_render_area_size();
+                render_pipeline.update_render_area(render_area_size, current_image_description.size);
                 
                 swapchain_image_id = context.acquire_next_swapchain_image(resources.image_acquired_semaphore);
         }
@@ -635,8 +635,8 @@ void VulkanDisplay::window_parameters_changed(WindowParameters new_parameters) {
         if (new_parameters != context.get_window_parameters() && !new_parameters.is_minimized()) {
                 std::scoped_lock lock{device_mutex};
                 context.recreate_swapchain(new_parameters, render_pipeline.get_render_pass());
-                render_pipeline.update_render_area({ new_parameters.width, new_parameters.height },
-                        current_image_description.size);
+                auto render_area_size = context.get_render_area_size();
+                render_pipeline.update_render_area(render_area_size, current_image_description.size);
         }
 }
 

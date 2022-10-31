@@ -388,22 +388,22 @@ void RenderPipeline::destroy(vk::Device device){
         }
 }
 
-void RenderPipeline::update_render_area(vk::Extent2D window_size, vk::Extent2D image_size){
-        double wnd_aspect = static_cast<double>(window_size.width) / window_size.height;
+void RenderPipeline::update_render_area(vk::Extent2D render_area_size, vk::Extent2D image_size){
+        double wnd_aspect = static_cast<double>(render_area_size.width) / render_area_size.height;
         double img_aspect = static_cast<double>(image_size.width) / image_size.height;
 
-        this->window_size = window_size;
+        this->render_area_siza = render_area_size;
 
         if (wnd_aspect > img_aspect) {
-                render_area.height = window_size.height;
-                render_area.width = static_cast<uint32_t>(std::round(window_size.height * img_aspect));
-                render_area.x = (window_size.width - render_area.width) / 2;
+                render_area.height = render_area_size.height;
+                render_area.width = static_cast<uint32_t>(std::round(render_area_size.height * img_aspect));
+                render_area.x = (render_area_size.width - render_area.width) / 2;
                 render_area.y = 0;
         } else {
-                render_area.width = window_size.width;
-                render_area.height = static_cast<uint32_t>(std::round(window_size.width / img_aspect));
+                render_area.width = render_area_size.width;
+                render_area.height = static_cast<uint32_t>(std::round(render_area_size.width / img_aspect));
                 render_area.x = 0;
-                render_area.y = (window_size.height - render_area.height) / 2;
+                render_area.y = (render_area_size.height - render_area.height) / 2;
         }
 
         viewport
@@ -440,7 +440,7 @@ void RenderPipeline::record_commands(vk::CommandBuffer cmd_buffer, vk::Descripto
         vk::RenderPassBeginInfo render_pass_begin_info;
         render_pass_begin_info
                 .setRenderPass(render_pass)
-                .setRenderArea(vk::Rect2D{ {0,0}, window_size })
+                .setRenderArea(vk::Rect2D{ {0,0}, render_area_siza })
                 .setClearValueCount(1)
                 .setPClearValues(&clear_color)
                 .setFramebuffer(framebuffer);
