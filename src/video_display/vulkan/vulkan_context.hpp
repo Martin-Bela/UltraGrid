@@ -167,7 +167,7 @@ public:
 private:
         void create_logical_device();
 
-        void create_swap_chain(vk::SwapchainKHR old_swap_chain = vk::SwapchainKHR{});
+        void create_swap_chain(vk::SwapchainKHR&& old_swap_chain = vk::SwapchainKHR{});
 
         void destroy_swapchain_views() {
                 for (auto& image : swapchain_images) {
