@@ -150,8 +150,7 @@ class VulkanContext {
         std::vector<SwapchainImage> swapchain_images{};
         vk::PresentModeKHR preferred_present_mode;
 
-        using WindowParameters = vulkan_display::WindowParameters;
-        WindowParameters window_parameters;
+        vulkan_display::WindowParameters window_parameters;
 public:
         //getters
         uint32_t get_vulkan_version() const { return vulkan_version; }
@@ -187,7 +186,7 @@ public:
         VulkanContext() = default;
 
         void init(vulkan_display::VulkanInstance&& instance, VkSurfaceKHR surface,
-                WindowParameters, uint32_t gpu_index, vk::PresentModeKHR preferred_mode);
+                vulkan_display::WindowParameters window_parameters, uint32_t gpu_index, vk::PresentModeKHR preferred_mode);
 
         void destroy();
 
@@ -199,11 +198,11 @@ public:
                 return swapchain_images[framebuffer_id].framebuffer;
         }
 
-        WindowParameters get_window_parameters() const {
+        vulkan_display::WindowParameters get_window_parameters() const {
                 return window_parameters;
         }
 
-        void recreate_swapchain(WindowParameters parameters, vk::RenderPass render_pass);
+        void recreate_swapchain(vulkan_display::WindowParameters parameters, vk::RenderPass render_pass);
 };
 
 }//namespace vulkan_display_detail ----------------------------------------------------------------
